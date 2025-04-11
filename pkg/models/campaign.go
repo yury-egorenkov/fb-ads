@@ -1,6 +1,8 @@
 package models
 
-import "time"
+import (
+	"time"
+)
 
 // Campaign represents a Facebook ad campaign
 type Campaign struct {
@@ -18,6 +20,12 @@ type Campaign struct {
 	StartTime            time.Time `json:"start_time,omitempty"`
 	StopTime             time.Time `json:"stop_time,omitempty"`
 	SpecialAdCategories  []string  `json:"special_ad_categories,omitempty"`
+	
+	// Raw time strings for parsing flexibility
+	CreatedTimeString    string    `json:"created_time_string,omitempty"`
+	UpdatedTimeString    string    `json:"updated_time_string,omitempty"`
+	StartTimeString      string    `json:"start_time_string,omitempty"`
+	StopTimeString       string    `json:"stop_time_string,omitempty"`
 }
 
 // CampaignResponse represents the Facebook API response for campaigns
