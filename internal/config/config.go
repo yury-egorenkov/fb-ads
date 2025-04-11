@@ -22,7 +22,7 @@ func DefaultConfig() *Config {
 	homeDir, _ := os.UserHomeDir()
 	
 	return &Config{
-		APIVersion:   "v18.0",
+		APIVersion:   "v22.0",
 		ConfigDir:    filepath.Join(homeDir, ".fbads"),
 		OutputFormat: "json",
 	}

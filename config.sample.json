@@ -1,9 +1,0 @@
-{
-  "api_version": "v18.0",
-  "app_id": "YOUR_FACEBOOK_APP_ID",
-  "app_secret": "YOUR_FACEBOOK_APP_SECRET",
-  "access_token": "YOUR_FACEBOOK_ACCESS_TOKEN",
-  "account_id": "YOUR_FACEBOOK_AD_ACCOUNT_ID",
-  "config_dir": "~/.fbads",
-  "output_format": "json"
-}

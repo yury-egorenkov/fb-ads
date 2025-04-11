@@ -13,6 +13,7 @@
 - [x] Build campaign listing functionality (basic structure)
 - [ ] Implement campaign creation from configuration files
 - [x] Develop pagination handling for large data sets
+- [x] Export campaign by ID from Facebook to configuration file based
 
 ## Audience Analysis
 - [x] Create audience data extraction module

@@ -1,57 +1,16 @@
 package campaign
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/user/fb-ads/pkg/auth"
+	"github.com/user/fb-ads/pkg/models"
 )
-
-// CampaignConfig represents a full campaign configuration including ad sets and ads
-type CampaignConfig struct {
-	Name                string       `json:"name"`
-	Status              string       `json:"status"`
-	Objective           string       `json:"objective"`
-	BuyingType          string       `json:"buying_type"`
-	SpecialAdCategories []string     `json:"special_ad_categories"`
-	BidStrategy         string       `json:"bid_strategy"`
-	DailyBudget         float64      `json:"daily_budget"`
-	LifetimeBudget      float64      `json:"lifetime_budget,omitempty"`
-	AdSets              []AdSetConfig `json:"adsets"`
-	Ads                 []AdConfig    `json:"ads"`
-}
-
-// AdSetConfig represents configuration for an ad set
-type AdSetConfig struct {
-	Name             string                 `json:"name"`
-	Status           string                 `json:"status,omitempty"`
-	Targeting        map[string]interface{} `json:"targeting"`
-	OptimizationGoal string                 `json:"optimization_goal"`
-	BillingEvent     string                 `json:"billing_event"`
-	BidAmount        float64                `json:"bid_amount"`
-	StartTime        string                 `json:"start_time"`
-	EndTime          string                 `json:"end_time,omitempty"`
-}
-
-// AdConfig represents configuration for an ad
-type AdConfig struct {
-	Name     string         `json:"name"`
-	Status   string         `json:"status,omitempty"`
-	Creative CreativeConfig `json:"creative"`
-}
-
-// CreativeConfig represents configuration for an ad creative
-type CreativeConfig struct {
-	Title        string `json:"title"`
-	Body         string `json:"body"`
-	ImageURL     string `json:"image_url"`
-	LinkURL      string `json:"link_url"`
-	CallToAction string `json:"call_to_action"`
-}
 
 // CampaignCreator handles creation of campaigns
 type CampaignCreator struct {
@@ -69,112 +28,303 @@ func NewCampaignCreator(auth *auth.FacebookAuth, accountID string) *CampaignCrea
 	}
 }
 
-// CreateCampaign creates a campaign from a configuration
-func (c *CampaignCreator) CreateCampaign(config *CampaignConfig) (string, error) {
-	// Convert daily budget to cents as required by the API
-	dailyBudget := int64(config.DailyBudget * 100)
-	
-	params := url.Values{}
-	params.Set("name", config.Name)
-	params.Set("status", config.Status)
-	params.Set("objective", config.Objective)
-	params.Set("buying_type", config.BuyingType)
-	params.Set("bid_strategy", config.BidStrategy)
-	params.Set("daily_budget", fmt.Sprintf("%d", dailyBudget))
-	
-	if len(config.SpecialAdCategories) > 0 {
-		specialCats, _ := json.Marshal(config.SpecialAdCategories)
-		params.Set("special_ad_categories", string(specialCats))
-	}
-	
-	endpoint := fmt.Sprintf("act_%s/campaigns", c.accountID)
-	
-	req, err := c.createPostRequest(endpoint, params)
-	if err != nil {
-		return "", fmt.Errorf("error creating request: %w", err)
-	}
-	
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("error executing request: %w", err)
-	}
-	defer resp.Body.Close()
-	
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("API error: %s - %s", resp.Status, string(body))
-	}
-	
-	var result struct {
-		ID string `json:"id"`
-	}
-	
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("error decoding response: %w", err)
-	}
-	
-	return result.ID, nil
-}
-
-// CreateAdSet creates an ad set for a campaign
-func (c *CampaignCreator) CreateAdSet(campaignID string, config *AdSetConfig) (string, error) {
-	// TODO: Implement ad set creation
-	return "", nil
-}
-
-// CreateAd creates an ad in an ad set
-func (c *CampaignCreator) CreateAd(adSetID string, config *AdConfig) (string, error) {
-	// TODO: Implement ad creation
-	return "", nil
-}
-
 // CreateFromConfig creates a full campaign structure from a configuration file
-func (c *CampaignCreator) CreateFromConfig(config *CampaignConfig) error {
+func (c *CampaignCreator) CreateFromConfig(config *models.CampaignConfig) error {
+	// Create the campaign
 	campaignID, err := c.CreateCampaign(config)
 	if err != nil {
 		return fmt.Errorf("error creating campaign: %w", err)
 	}
+
+	fmt.Printf("Campaign created with ID: %s\n", campaignID)
 	
 	// Store adSet IDs to link with ads later
 	adSetIDs := make([]string, 0, len(config.AdSets))
 	
 	// Create ad sets
-	for _, adSetConfig := range config.AdSets {
+	for i, adSetConfig := range config.AdSets {
+		fmt.Printf("Creating ad set %d/%d: %s\n", i+1, len(config.AdSets), adSetConfig.Name)
 		adSetID, err := c.CreateAdSet(campaignID, &adSetConfig)
 		if err != nil {
 			return fmt.Errorf("error creating ad set: %w", err)
 		}
+		
+		fmt.Printf("Ad set created with ID: %s\n", adSetID)
 		adSetIDs = append(adSetIDs, adSetID)
 	}
 	
-	// Create ads (simplified for now - assuming one ad per ad set)
+	// Create ads (link each ad to an ad set)
 	for i, adConfig := range config.Ads {
-		if i < len(adSetIDs) {
-			_, err := c.CreateAd(adSetIDs[i], &adConfig)
-			if err != nil {
-				return fmt.Errorf("error creating ad: %w", err)
-			}
+		// Find the right ad set for this ad
+		adSetIndex := i % len(adSetIDs) // Simple distribution - cycle through ad sets
+		adSetID := adSetIDs[adSetIndex]
+		
+		fmt.Printf("Creating ad %d/%d: %s (in ad set: %s)\n", i+1, len(config.Ads), adConfig.Name, adSetID)
+		adID, err := c.CreateAd(adSetID, &adConfig)
+		if err != nil {
+			return fmt.Errorf("error creating ad: %w", err)
 		}
+		
+		fmt.Printf("Ad created with ID: %s\n", adID)
 	}
 	
 	return nil
 }
 
-// createPostRequest creates a POST request with authentication
-func (c *CampaignCreator) createPostRequest(endpoint string, params url.Values) (*http.Request, error) {
-	baseURL := fmt.Sprintf("https://graph.facebook.com/%s/%s", c.auth.APIVersion, endpoint)
+// CreateCampaign creates a new campaign
+func (c *CampaignCreator) CreateCampaign(config *models.CampaignConfig) (string, error) {
+	params := url.Values{}
 	
-	if params == nil {
-		params = url.Values{}
+	// Required parameters
+	params.Set("name", config.Name)
+	params.Set("objective", config.Objective)
+	params.Set("status", getStatusOrDefault(config.Status, "PAUSED")) // Default to PAUSED for safety
+	params.Set("buying_type", config.BuyingType)
+	params.Set("special_ad_categories", "[]") // Default to empty list
+	
+	// Budget (convert to cents as required by the API)
+	if config.DailyBudget > 0 {
+		params.Set("daily_budget", fmt.Sprintf("%d", int64(config.DailyBudget*100)))
 	}
 	
+	if config.LifetimeBudget > 0 {
+		params.Set("lifetime_budget", fmt.Sprintf("%d", int64(config.LifetimeBudget*100)))
+	}
+	
+	// Optional parameters
+	if config.BidStrategy != "" {
+		params.Set("bid_strategy", config.BidStrategy)
+	}
+	
+	if len(config.SpecialAdCategories) > 0 {
+		specialCatsJSON, _ := json.Marshal(config.SpecialAdCategories)
+		params.Set("special_ad_categories", string(specialCatsJSON))
+	}
+	
+	// Time parameters
+	if config.StartTime != "" {
+		params.Set("start_time", config.StartTime)
+	}
+	
+	if config.EndTime != "" {
+		params.Set("end_time", config.EndTime)
+	}
+	
+	// Create the endpoint
+	endpoint := fmt.Sprintf("act_%s/campaigns", c.accountID)
+	
+	// Make the API request
+	return c.createEntity(endpoint, params)
+}
+
+// CreateAdSet creates a new ad set
+func (c *CampaignCreator) CreateAdSet(campaignID string, config *models.AdSetConfig) (string, error) {
+	params := url.Values{}
+	
+	// Required parameters
+	params.Set("name", config.Name)
+	params.Set("campaign_id", campaignID)
+	params.Set("status", getStatusOrDefault(config.Status, "PAUSED")) // Default to PAUSED for safety
+	params.Set("optimization_goal", config.OptimizationGoal)
+	params.Set("billing_event", config.BillingEvent)
+	
+	// Bid amount (convert to cents as required by the API)
+	if config.BidAmount > 0 {
+		params.Set("bid_amount", fmt.Sprintf("%d", int64(config.BidAmount*100)))
+	}
+	
+	// Targeting
+	if len(config.Targeting) > 0 {
+		targetingJSON, err := json.Marshal(config.Targeting)
+		if err != nil {
+			return "", fmt.Errorf("error marshaling targeting: %w", err)
+		}
+		params.Set("targeting", string(targetingJSON))
+	}
+	
+	// Time parameters
+	if config.StartTime != "" {
+		params.Set("start_time", config.StartTime)
+	}
+	
+	if config.EndTime != "" {
+		params.Set("end_time", config.EndTime)
+	}
+	
+	// Create the endpoint
+	endpoint := fmt.Sprintf("act_%s/adsets", c.accountID)
+	
+	// Make the API request
+	return c.createEntity(endpoint, params)
+}
+
+// CreateAd creates a new ad
+func (c *CampaignCreator) CreateAd(adSetID string, config *models.AdConfig) (string, error) {
+	// First, create the creative
+	creativeID, err := c.CreateCreative(config.Creative)
+	if err != nil {
+		return "", fmt.Errorf("error creating creative: %w", err)
+	}
+	
+	params := url.Values{}
+	
+	// Required parameters
+	params.Set("name", config.Name)
+	params.Set("adset_id", adSetID)
+	params.Set("status", getStatusOrDefault(config.Status, "PAUSED")) // Default to PAUSED for safety
+	params.Set("creative", fmt.Sprintf("{\"creative_id\":\"%s\"}", creativeID))
+	
+	// Create the endpoint
+	endpoint := fmt.Sprintf("act_%s/ads", c.accountID)
+	
+	// Make the API request
+	return c.createEntity(endpoint, params)
+}
+
+// CreateCreative creates a new creative
+func (c *CampaignCreator) CreateCreative(config models.CreativeConfig) (string, error) {
+	params := url.Values{}
+	
+	// Check for required page_id
+	if config.PageID == "" {
+		return "", fmt.Errorf("page_id is required for creating ad creatives")
+	}
+	
+	// Create object_story_spec with page_id
+	objectStorySpec := make(map[string]interface{})
+	
+	// Add page_id to the story spec
+	objectStorySpec["page_id"] = config.PageID
+	
+	// Create link_data object
+	linkData := make(map[string]interface{})
+	linkData["link"] = config.LinkURL
+	
+	// Note: As per the API error, title is not supported directly in link_data
+	// Instead, we'll use name for the title/name field
+	titleValue := config.Title
+	
+	// If Title is empty but Name is set, use the Name field instead
+	if titleValue == "" && config.Name != "" {
+		titleValue = config.Name
+	}
+	
+	// Set the name parameter for the link data
+	if titleValue != "" {
+		linkData["name"] = titleValue
+	}
+	
+	if config.Body != "" {
+		linkData["message"] = config.Body
+	}
+	
+	if config.ImageURL != "" {
+		linkData["image_url"] = config.ImageURL
+	}
+	
+	if config.CallToAction != "" {
+		callToAction := map[string]string{
+			"type": config.CallToAction,
+		}
+		linkData["call_to_action"] = callToAction
+	}
+	
+	// Add link_data to story spec
+	objectStorySpec["link_data"] = linkData
+	
+	// Marshal the object_story_spec to JSON
+	objectJSON, err := json.Marshal(objectStorySpec)
+	if err != nil {
+		return "", fmt.Errorf("error marshaling creative object: %w", err)
+	}
+	
+	params.Set("object_story_spec", string(objectJSON))
+	
+	// Create the endpoint
+	endpoint := fmt.Sprintf("act_%s/adcreatives", c.accountID)
+	
+	// Make the API request
+	return c.createEntity(endpoint, params)
+}
+
+// createEntity is a helper function to create an entity and return its ID
+func (c *CampaignCreator) createEntity(endpoint string, params url.Values) (string, error) {
+	// Add access token to parameters
 	params.Set("access_token", c.auth.AccessToken)
 	
-	req, err := http.NewRequest("POST", baseURL, bytes.NewBufferString(params.Encode()))
+	// Build the request URL
+	baseURL := fmt.Sprintf("https://graph.facebook.com/%s/%s", c.auth.APIVersion, endpoint)
+	
+	// Create the POST request
+	req, err := http.NewRequest("POST", baseURL, strings.NewReader(params.Encode()))
 	if err != nil {
-		return nil, err
+		return "", fmt.Errorf("error creating request: %w", err)
 	}
 	
+	// Set the content type
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	return req, nil
+	
+	// Send the request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("error sending request: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("error reading response: %w", err)
+	}
+	
+	// Check for errors
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API error: %s - %s", resp.Status, string(body))
+	}
+	
+	// Parse the response
+	var result struct {
+		ID      string `json:"id"`
+		Success bool   `json:"success"`
+		Error   struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+			Code    int    `json:"code"`
+		} `json:"error"`
+	}
+	
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("error parsing response: %w - %s", err, string(body))
+	}
+	
+	// Check for API-level errors
+	if result.Error.Message != "" {
+		return "", fmt.Errorf("API error: %s (code: %d, type: %s)", 
+			result.Error.Message, result.Error.Code, result.Error.Type)
+	}
+	
+	// Return the ID
+	return result.ID, nil
+}
+
+// getStatusOrDefault returns the status if it's valid, or the default
+func getStatusOrDefault(status, defaultStatus string) string {
+	if status == "" {
+		return defaultStatus
+	}
+	
+	validStatuses := map[string]bool{
+		"ACTIVE":    true,
+		"PAUSED":    true,
+		"DELETED":   true,
+		"ARCHIVED":  true,
+		"SCHEDULED": true,
+	}
+	
+	upperStatus := strings.ToUpper(status)
+	if validStatuses[upperStatus] {
+		return upperStatus
+	}
+	
+	return defaultStatus
 }

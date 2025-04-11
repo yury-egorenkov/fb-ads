@@ -47,7 +47,7 @@ Before using the application, you need to configure it with your Facebook API cr
 
 2. Enter your Facebook App ID, App Secret, Access Token, and Ad Account ID.
 
-Alternatively, you can manually create a configuration file at `~/.fbads/config.json` using the format in `config.sample.json`.
+Alternatively, you can manually create a configuration file at `~/.fbads/config.json` using the format in `config.example.json`.
 
 ## Usage
 

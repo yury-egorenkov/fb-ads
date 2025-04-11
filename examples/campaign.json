@@ -39,7 +39,8 @@
         "body": "Shop our exclusive collection with special discounts today!",
         "image_url": "https://example.com/images/special_offer.jpg",
         "link_url": "https://example.com/special-offer",
-        "call_to_action": "SHOP_NOW"
+        "call_to_action": "SHOP_NOW",
+        "page_id": "YOUR_FACEBOOK_PAGE_ID"
       }
     }
   ]

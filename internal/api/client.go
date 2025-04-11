@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/user/fb-ads/pkg/auth"
@@ -204,6 +205,198 @@ func parseTime(timeStr string) time.Time {
 	return time.Time{} // Return zero time if parsing fails
 }
 
+// GetCampaignDetails retrieves detailed information about a specific campaign
+func (c *Client) GetCampaignDetails(campaignID string) (*models.CampaignDetails, error) {
+	// Create the fields list for all the information we need
+	fields := []string{
+		"id",
+		"name",
+		"status",
+		"objective",
+		"spend_cap",
+		"daily_budget",
+		"lifetime_budget",
+		"bid_strategy",
+		"buying_type",
+		"created_time",
+		"updated_time",
+		"start_time",
+		"stop_time",
+		"special_ad_categories",
+		// "targeting",  // Targeting is at the adset level, not campaign level
+		"adlabels",
+		"promoted_object",
+		"source_campaign_id",
+		"adsets{id,name,status,targeting,optimization_goal,billing_event,bid_amount,start_time,end_time}",
+		"ads{id,name,status,creative{id,name,title,body,image_url,link_url,call_to_action_type,object_story_spec{page_id}}}",
+	}
+	
+	// Create the parameters
+	params := url.Values{}
+	params.Set("fields", strings.Join(fields, ","))
+	
+	// Create the endpoint
+	endpoint := campaignID
+	
+	// Create the request
+	req, err := c.auth.GetAuthenticatedRequest(endpoint, params)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+	
+	// Send the request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error executing request: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	// Check for errors
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error: %s - %s", resp.Status, string(body))
+	}
+	
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+	
+	// For debugging
+	// fmt.Println("Raw response:", string(body))
+	
+	// Parse the raw JSON response
+	var rawData map[string]interface{}
+	if err := json.Unmarshal(body, &rawData); err != nil {
+		return nil, fmt.Errorf("error unmarshaling response: %w", err)
+	}
+	
+	// Extract campaign details
+	details := &models.CampaignDetails{
+		ID:                  getString(rawData, "id"),
+		Name:                getString(rawData, "name"),
+		Status:              getString(rawData, "status"),
+		ObjectiveType:       getString(rawData, "objective"),
+		SpendCap:            getFloat(rawData, "spend_cap"),
+		DailyBudget:         getFloat(rawData, "daily_budget"),
+		LifetimeBudget:      getFloat(rawData, "lifetime_budget"),
+		BidStrategy:         getString(rawData, "bid_strategy"),
+		BuyingType:          getString(rawData, "buying_type"),
+		SpecialAdCategories: []string{},
+	}
+	
+	// Handle date fields
+	createdStr := getString(rawData, "created_time")
+	if createdStr != "" {
+		details.Created = parseTime(createdStr)
+	}
+	
+	updatedStr := getString(rawData, "updated_time")
+	if updatedStr != "" {
+		details.Updated = parseTime(updatedStr)
+	}
+	
+	startStr := getString(rawData, "start_time")
+	if startStr != "" {
+		details.StartTime = parseTime(startStr)
+	}
+	
+	stopStr := getString(rawData, "stop_time")
+	if stopStr != "" {
+		details.StopTime = parseTime(stopStr)
+	}
+	
+	// Handle special ad categories
+	if categories, ok := rawData["special_ad_categories"].([]interface{}); ok {
+		for _, cat := range categories {
+			if catStr, ok := cat.(string); ok {
+				details.SpecialAdCategories = append(details.SpecialAdCategories, catStr)
+			}
+		}
+	}
+	
+	// Extract targeting if available
+	if targeting, ok := rawData["targeting"].(map[string]interface{}); ok {
+		details.Targeting = targeting
+	}
+	
+	// Extract adsets if available
+	if adsets, ok := rawData["adsets"].(map[string]interface{}); ok {
+		if data, ok := adsets["data"].([]interface{}); ok {
+			for _, rawAdset := range data {
+				if adsetMap, ok := rawAdset.(map[string]interface{}); ok {
+					adset := models.AdSetDetails{
+						ID:              getString(adsetMap, "id"),
+						Name:            getString(adsetMap, "name"),
+						Status:          getString(adsetMap, "status"),
+						OptimizationGoal: getString(adsetMap, "optimization_goal"),
+						BillingEvent:     getString(adsetMap, "billing_event"),
+						BidAmount:        getFloat(adsetMap, "bid_amount"),
+					}
+					
+					// Parse dates
+					startStr := getString(adsetMap, "start_time")
+					if startStr != "" {
+						adset.StartTime = parseTime(startStr)
+					}
+					
+					endStr := getString(adsetMap, "end_time")
+					if endStr != "" {
+						adset.EndTime = parseTime(endStr)
+					}
+					
+					// Extract targeting if available
+					if targeting, ok := adsetMap["targeting"].(map[string]interface{}); ok {
+						adset.Targeting = targeting
+					}
+					
+					details.AdSets = append(details.AdSets, adset)
+				}
+			}
+		}
+	}
+	
+	// Extract ads if available
+	if ads, ok := rawData["ads"].(map[string]interface{}); ok {
+		if data, ok := ads["data"].([]interface{}); ok {
+			for _, rawAd := range data {
+				if adMap, ok := rawAd.(map[string]interface{}); ok {
+					ad := models.AdDetails{
+						ID:     getString(adMap, "id"),
+						Name:   getString(adMap, "name"),
+						Status: getString(adMap, "status"),
+					}
+					
+					// Extract creative if available
+					if creative, ok := adMap["creative"].(map[string]interface{}); ok {
+						creativeDetails := models.CreativeDetails{
+							ID:              getString(creative, "id"),
+							Name:            getString(creative, "name"),
+							Title:           getString(creative, "title"),
+							Body:            getString(creative, "body"),
+							ImageURL:        getString(creative, "image_url"),
+							LinkURL:         getString(creative, "link_url"),
+							CallToActionType: getString(creative, "call_to_action_type"),
+						}
+							
+						// Extract page_id from object_story_spec if available
+						if objectStorySpec, ok := creative["object_story_spec"].(map[string]interface{}); ok {
+							creativeDetails.PageID = getString(objectStorySpec, "page_id")
+						}
+							
+						ad.Creative = creativeDetails
+					}
+					
+					details.Ads = append(details.Ads, ad)
+				}
+			}
+		}
+	}
+	
+	return details, nil
+}
+
 // GetAllCampaigns retrieves all campaigns by handling pagination
 func (c *Client) GetAllCampaigns() ([]models.Campaign, error) {
 	// Check if we're in mock mode (no API credentials)
@@ -240,6 +433,59 @@ func (c *Client) GetAllCampaigns() ([]models.Campaign, error) {
 	}
 	
 	return allCampaigns, nil
+}
+
+// GetPages retrieves Facebook Pages available for the current access token
+func (c *Client) GetPages() ([]models.Page, error) {
+	// Create the parameters
+	params := url.Values{}
+	params.Set("fields", "id,name,category,picture")
+	
+	// Create the endpoint (no account ID needed as we're getting pages for the user token)
+	endpoint := "me/accounts"
+	
+	// Create the request
+	req, err := c.auth.GetAuthenticatedRequest(endpoint, params)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+	
+	// Send the request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error executing request: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	// Check for errors
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error: %s - %s", resp.Status, string(body))
+	}
+	
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+	
+	// Parse the response
+	var result struct {
+		Data []models.Page `json:"data"`
+		Paging struct {
+			Cursors struct {
+				Before string `json:"before"`
+				After  string `json:"after"`
+			} `json:"cursors"`
+			Next string `json:"next"`
+		} `json:"paging"`
+	}
+	
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("error parsing response: %w", err)
+	}
+	
+	return result.Data, nil
 }
 
 // getMockCampaigns returns mock campaign data for testing
