@@ -1,0 +1,46 @@
+{
+  "name": "Test Narrow Audience Campaign",
+  "status": "PAUSED",
+  "objective": "CONVERSIONS",
+  "buying_type": "AUCTION",
+  "special_ad_categories": [],
+  "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
+  "daily_budget": 10.00,
+  
+  "adsets": [
+    {
+      "name": "Narrow Category Audience",
+      "targeting": {
+        "geo_locations": {
+          "countries": ["US"]
+        },
+        "age_min": 25,
+        "age_max": 45,
+        "behaviors": [
+          {"id": "6002714895372", "name": "Engaged Shoppers"}
+        ],
+        "interests": [
+          {"id": "6003107902433", "name": "Online shopping"}
+        ]
+      },
+      "optimization_goal": "OFFSITE_CONVERSIONS",
+      "billing_event": "IMPRESSIONS",
+      "bid_amount": 5.00,
+      "start_time": "2025-04-15T00:00:00+0000",
+      "end_time": "2025-05-15T00:00:00+0000"
+    }
+  ],
+  
+  "ads": [
+    {
+      "name": "Shopping Conversion Ad",
+      "creative": {
+        "title": "Limited Time Offer",
+        "body": "Shop our exclusive collection with special discounts today!",
+        "image_url": "https://example.com/images/special_offer.jpg",
+        "link_url": "https://example.com/special-offer",
+        "call_to_action": "SHOP_NOW"
+      }
+    }
+  ]
+}
