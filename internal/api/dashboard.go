@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/user/fb-ads/pkg/utils"
@@ -83,6 +84,7 @@ func (d *Dashboard) Start() error {
 	http.HandleFunc("/api/dashboard", d.handleDashboardData)
 	http.HandleFunc("/api/campaigns", d.handleCampaigns)
 	http.HandleFunc("/api/performance", d.handlePerformance)
+	http.HandleFunc("/api/reports", d.handleReports)
 
 	// Serve static files
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(filepath.Join(d.templateDir, "static")))))
@@ -184,6 +186,47 @@ func (d *Dashboard) handlePerformance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Error encoding JSON: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// handleReports handles API requests for report data
+func (d *Dashboard) handleReports(w http.ResponseWriter, r *http.Request) {
+	// Get report name from query parameter
+	reportName := r.URL.Query().Get("name")
+	
+	// Get the reports directory
+	reportsDir := filepath.Join(filepath.Dir(d.dataDir), "reports")
+	
+	// If no specific report name is provided, list all available reports
+	if reportName == "" {
+		reports, err := d.listAvailableReports(reportsDir)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error listing reports: %v", err), http.StatusInternalServerError)
+			return
+		}
+		
+		// Set content type and send the report list
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(reports); err != nil {
+			http.Error(w, fmt.Sprintf("Error encoding JSON: %v", err), http.StatusInternalServerError)
+		}
+		return
+	}
+	
+	// Load the specific report file
+	reportPath := filepath.Join(reportsDir, reportName)
+	if !strings.HasSuffix(reportPath, ".json") {
+		reportPath += ".json"
+	}
+	
+	data, err := os.ReadFile(reportPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error reading report: %v", err), http.StatusInternalServerError)
+		return
+	}
+	
+	// Set content type and send the report
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
 }
 
 // generateDashboardData generates data for the dashboard
@@ -349,6 +392,20 @@ func (d *Dashboard) CreateDashboardFiles() error {
     </header>
     
     <main>
+        <section class="reports-section">
+            <h2>Available Reports</h2>
+            <div class="reports-container">
+                <div class="reports-list-container">
+                    <select id="report-selector" onchange="loadSelectedReport()">
+                        <option value="">Select a report...</option>
+                        <!-- Will be populated by JavaScript -->
+                    </select>
+                    <button onclick="loadReports()">Refresh Reports</button>
+                </div>
+                <div id="report-details"></div>
+            </div>
+        </section>
+        
         <section class="summary-section">
             <h2>Performance Summary</h2>
             <div class="summary-grid">
@@ -554,6 +611,49 @@ tr:hover {
 #recommendations-list li {
     margin-bottom: 10px;
     line-height: 1.5;
+}
+
+/* Reports Section */
+.reports-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.reports-list-container {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+#report-selector {
+    flex-grow: 1;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+}
+
+button {
+    padding: 8px 16px;
+    background-color: #1877f2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #166fe5;
+}
+
+#report-details {
+    background-color: #f5f5f5;
+    border-radius: 4px;
+    padding: 15px;
+    font-family: monospace;
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow-y: auto;
 }`
 
 	if err := os.WriteFile(filepath.Join(cssDir, "style.css"), []byte(cssContent), 0644); err != nil {
@@ -739,16 +839,118 @@ function createPerformanceChart(data) {
     });
 }
 
-// Initialize the dashboard
-async function initDashboard() {
-    const dashboardData = await fetchDashboardData();
-    if (!dashboardData) {
+// Fetch available reports
+async function fetchReports() {
+    try {
+        const response = await fetch('/api/reports');
+        if (!response.ok) {
+            throw new Error('Failed to fetch reports');
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching reports:', error);
+        return [];
+    }
+}
+
+// Load a specific report
+async function fetchReport(reportName) {
+    try {
+        const response = await fetch('/api/reports?name=' + encodeURIComponent(reportName));
+        if (!response.ok) {
+            throw new Error('Failed to fetch report');
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching report:', error);
+        return null;
+    }
+}
+
+// Load reports into the selector
+async function loadReports() {
+    const reports = await fetchReports();
+    const selector = document.getElementById('report-selector');
+    
+    // Clear existing options except the first one
+    while (selector.options.length > 1) {
+        selector.remove(1);
+    }
+    
+    // Sort reports by modified date (newest first)
+    reports.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+    
+    // Add report options
+    reports.forEach(report => {
+        const option = document.createElement('option');
+        option.value = report.name;
+        option.textContent = report.name + ' (' + formatDate(report.modified) + ')';
+        selector.appendChild(option);
+    });
+    
+    if (reports.length === 0) {
+        // Add a placeholder if no reports
+        const option = document.createElement('option');
+        option.disabled = true;
+        option.textContent = 'No reports available';
+        selector.appendChild(option);
+    }
+}
+
+// Format a date string
+function formatDate(dateStr) {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+}
+
+// Load the selected report
+async function loadSelectedReport() {
+    const selector = document.getElementById('report-selector');
+    const reportName = selector.value;
+    
+    if (!reportName) {
+        document.getElementById('report-details').textContent = '';
         return;
     }
     
-    updateSummary(dashboardData);
-    updateTopCampaigns(dashboardData.top_campaigns);
-    updateRecommendations(dashboardData.recommendations);
+    const report = await fetchReport(reportName);
+    if (!report) {
+        document.getElementById('report-details').textContent = 'Error loading report';
+        return;
+    }
+    
+    // Display the report details
+    document.getElementById('report-details').textContent = JSON.stringify(report, null, 2);
+    
+    // Update dashboard with report data if it matches our format
+    try {
+        if (report.top_campaigns && report.summary) {
+            updateSummary({
+                summary: report.summary,
+                generated_at: report.analysis_date
+            });
+            updateTopCampaigns(report.top_campaigns);
+            if (report.recommendations) {
+                updateRecommendations(report.recommendations);
+            }
+        }
+    } catch (error) {
+        console.error('Error updating dashboard with report data:', error);
+    }
+}
+
+// Initialize the dashboard
+async function initDashboard() {
+    // Load available reports
+    await loadReports();
+    
+    // Load default dashboard data
+    const dashboardData = await fetchDashboardData();
+    if (dashboardData) {
+        updateSummary(dashboardData);
+        updateTopCampaigns(dashboardData.top_campaigns);
+        updateRecommendations(dashboardData.recommendations);
+    }
     
     const performanceData = await fetchPerformanceData();
     if (performanceData.length > 0) {
@@ -764,4 +966,42 @@ document.addEventListener('DOMContentLoaded', initDashboard);`
 	}
 
 	return nil
+}
+
+// listAvailableReports lists all report files in the reports directory
+func (d *Dashboard) listAvailableReports(reportsDir string) ([]map[string]string, error) {
+	// Create the reports directory if it doesn't exist
+	if err := os.MkdirAll(reportsDir, 0755); err != nil {
+		return nil, fmt.Errorf("error creating reports directory: %w", err)
+	}
+	
+	// Read the directory
+	files, err := os.ReadDir(reportsDir)
+	if err != nil {
+		return nil, fmt.Errorf("error reading reports directory: %w", err)
+	}
+	
+	// Filter and process report files
+	var reports []map[string]string
+	for _, file := range files {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".json") {
+			continue
+		}
+		
+		// Get file info
+		info, err := file.Info()
+		if err != nil {
+			continue
+		}
+		
+		// Add report info
+		reports = append(reports, map[string]string{
+			"name": file.Name(),
+			"path": filepath.Join(reportsDir, file.Name()),
+			"size": fmt.Sprintf("%d", info.Size()),
+			"modified": info.ModTime().Format(time.RFC3339),
+		})
+	}
+	
+	return reports, nil
 }
