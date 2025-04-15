@@ -1,0 +1,1237 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/user/fb-ads/internal/api"
+	"github.com/user/fb-ads/internal/audience"
+	internal_campaign "github.com/user/fb-ads/internal/campaign"
+	"github.com/user/fb-ads/internal/config"
+	"github.com/user/fb-ads/pkg/auth"
+	"github.com/user/fb-ads/pkg/models"
+)
+
+func main() {
+	fmt.Println("Facebook Ads Manager CLI")
+	fmt.Println("------------------------")
+
+	if len(os.Args) < 2 {
+		printUsage()
+		os.Exit(1)
+	}
+
+	// Get user's home directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Printf("Error getting home directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Set default config path
+	configPath := filepath.Join(homeDir, ".fbads", "config.json")
+
+	// Load configuration
+	cfg, err := config.LoadConfig(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		fmt.Printf("Error loading configuration: %v\n", err)
+		fmt.Println("Using default configuration...")
+		cfg = config.DefaultConfig()
+	}
+
+	// Process commands
+	cmd := os.Args[1]
+
+	switch cmd {
+	case "list":
+		listCampaigns(cfg)
+	case "create":
+		createCampaign(cfg)
+	case "export":
+		if len(os.Args) < 3 {
+			fmt.Println("Missing campaign ID. Use: fbads export <campaign_id> [output_file]")
+			os.Exit(1)
+		}
+		exportCampaign(cfg, os.Args[2], os.Args[3:])
+	case "pages":
+		listPages(cfg)
+	case "audience":
+		analyzeAudience(cfg)
+	case "report":
+		if len(os.Args) < 3 {
+			fmt.Println("Missing report type. Use: fbads report [daily|weekly|monthly|custom]")
+			os.Exit(1)
+		}
+		generateReport(cfg, os.Args[2], os.Args[3:])
+	case "optimize":
+		optimizeCampaigns(cfg)
+	case "dashboard":
+		startDashboard(cfg)
+	case "config":
+		configureApp(cfg, configPath)
+	case "help":
+		printUsage()
+	default:
+		fmt.Printf("Unknown command: %s\n", cmd)
+		printUsage()
+		os.Exit(1)
+	}
+}
+
+func listCampaigns(cfg *config.Config) {
+	// Parse flags
+	var (
+		limit  int
+		status string
+		format string
+	)
+
+	// Check for flags
+	args := os.Args[2:]
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--limit", "-l":
+			if i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &limit)
+				i++
+			}
+		case "--status", "-s":
+			if i+1 < len(args) {
+				status = args[i+1]
+				i++
+			}
+		case "--format", "-f":
+			if i+1 < len(args) {
+				format = args[i+1]
+				i++
+			}
+		}
+	}
+
+	// Set defaults
+	if limit <= 0 {
+		limit = 10
+	}
+	if format == "" {
+		format = "table" // Default to table format
+	}
+
+	// Create auth client
+	authClient := auth.NewFacebookAuth(
+		cfg.AppID,
+		cfg.AppSecret,
+		cfg.AccessToken,
+		cfg.APIVersion,
+	)
+
+	// Create API client
+	client := api.NewClient(authClient, cfg.AccountID)
+
+	fmt.Println("Fetching campaigns...")
+
+	// Get campaigns
+	campaigns, err := client.GetAllCampaigns()
+	if err != nil {
+		fmt.Printf("Error fetching campaigns: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Filter by status if specified
+	if status != "" {
+		filteredCampaigns := make([]models.Campaign, 0)
+		status = strings.ToUpper(status)
+		for _, campaign := range campaigns {
+			if campaign.Status == status {
+				filteredCampaigns = append(filteredCampaigns, campaign)
+			}
+		}
+		campaigns = filteredCampaigns
+	}
+
+	// Limit results
+	if limit > 0 && limit < len(campaigns) {
+		campaigns = campaigns[:limit]
+	}
+
+	// Display results based on format
+	switch format {
+	case "json":
+		displayCampaignsJSON(campaigns)
+	case "csv":
+		displayCampaignsCSV(campaigns)
+	case "table":
+		displayCampaignsTable(campaigns)
+	default:
+		fmt.Printf("Unknown format: %s. Supported formats: table, json, csv\n", format)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\nTotal: %d campaigns\n", len(campaigns))
+}
+
+// displayCampaignsTable displays campaigns in a formatted table
+func displayCampaignsTable(campaigns []models.Campaign) {
+	if len(campaigns) == 0 {
+		fmt.Println("No campaigns found.")
+		return
+	}
+
+	// Calculate column widths
+	idWidth := 10
+	nameWidth := 30
+	statusWidth := 10
+	budgetWidth := 15
+	objectiveWidth := 20
+
+	for _, campaign := range campaigns {
+		if len(campaign.ID) > idWidth {
+			idWidth = len(campaign.ID)
+		}
+		if len(campaign.Name) > nameWidth {
+			nameWidth = len(campaign.Name)
+		}
+		if len(campaign.Status) > statusWidth {
+			statusWidth = len(campaign.Status)
+		}
+		if len(campaign.ObjectiveType) > objectiveWidth {
+			objectiveWidth = len(campaign.ObjectiveType)
+		}
+	}
+
+	// Print header
+	fmt.Printf("%-*s | %-*s | %-*s | %-*s | %-*s\n",
+		idWidth, "ID",
+		nameWidth, "NAME",
+		statusWidth, "STATUS",
+		budgetWidth, "BUDGET",
+		objectiveWidth, "OBJECTIVE")
+
+	// Print separator
+	fmt.Printf("%s-+-%s-+-%s-+-%s-+-%s\n",
+		strings.Repeat("-", idWidth),
+		strings.Repeat("-", nameWidth),
+		strings.Repeat("-", statusWidth),
+		strings.Repeat("-", budgetWidth),
+		strings.Repeat("-", objectiveWidth))
+
+	// Print rows
+	for _, campaign := range campaigns {
+		// Determine budget to display (daily or lifetime)
+		var budget string
+		if campaign.DailyBudget > 0 {
+			budget = fmt.Sprintf("$%.2f/day", campaign.DailyBudget/100)
+		} else if campaign.LifetimeBudget > 0 {
+			budget = fmt.Sprintf("$%.2f total", campaign.LifetimeBudget/100)
+		} else {
+			budget = "N/A"
+		}
+
+		fmt.Printf("%-*s | %-*s | %-*s | %-*s | %-*s\n",
+			idWidth, campaign.ID,
+			nameWidth, truncateString(campaign.Name, nameWidth),
+			statusWidth, campaign.Status,
+			budgetWidth, budget,
+			objectiveWidth, campaign.ObjectiveType)
+	}
+}
+
+// displayCampaignsJSON displays campaigns in JSON format
+func displayCampaignsJSON(campaigns []models.Campaign) {
+	// Create a response structure to wrap the campaigns
+	response := struct {
+		Campaigns []models.Campaign `json:"campaigns"`
+		Count     int               `json:"count"`
+	}{
+		Campaigns: campaigns,
+		Count:     len(campaigns),
+	}
+
+	// Marshal to JSON
+	data, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		fmt.Printf("Error encoding to JSON: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(string(data))
+}
+
+// displayCampaignsCSV displays campaigns in CSV format
+func displayCampaignsCSV(campaigns []models.Campaign) {
+	// Print header
+	fmt.Println("id,name,status,objective,budget_type,budget,bid_strategy,buying_type,created,updated")
+
+	// Print rows
+	for _, campaign := range campaigns {
+		// Determine budget type and value
+		budgetType := "none"
+		var budget float64
+		if campaign.DailyBudget > 0 {
+			budgetType = "daily"
+			budget = campaign.DailyBudget
+		} else if campaign.LifetimeBudget > 0 {
+			budgetType = "lifetime"
+			budget = campaign.LifetimeBudget
+		}
+
+		// Format created and updated dates
+		created := campaign.Created.Format("2006-01-02T15:04:05")
+		updated := campaign.Updated.Format("2006-01-02T15:04:05")
+
+		// Print the campaign as a CSV row
+		fmt.Printf("%s,%s,%s,%s,%s,%.2f,%s,%s,%s,%s\n",
+			campaign.ID,
+			escapeCSV(campaign.Name),
+			campaign.Status,
+			campaign.ObjectiveType,
+			budgetType,
+			budget,
+			campaign.BidStrategy,
+			campaign.BuyingType,
+			created,
+			updated)
+	}
+}
+
+// Helper functions
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+func escapeCSV(s string) string {
+	if strings.Contains(s, ",") || strings.Contains(s, "\"") || strings.Contains(s, "\n") {
+		s = strings.Replace(s, "\"", "\"\"", -1)
+		s = "\"" + s + "\""
+	}
+	return s
+}
+
+func createCampaign(cfg *config.Config) {
+	if len(os.Args) < 3 {
+		fmt.Println("Missing campaign configuration file. Use: fbads create <config_file.json>")
+		os.Exit(1)
+	}
+
+	configFile := os.Args[2]
+
+	// Check for dry run flag
+	dryRun := false
+	for _, arg := range os.Args {
+		if arg == "--dry-run" || arg == "-d" {
+			dryRun = true
+			break
+		}
+	}
+
+	fmt.Printf("Reading campaign configuration from: %s\n", configFile)
+
+	// Read the configuration file
+	configData, err := os.ReadFile(configFile)
+	if err != nil {
+		fmt.Printf("Error reading configuration file: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Parse the configuration
+	var campaignConfig models.CampaignConfig
+	if err := json.Unmarshal(configData, &campaignConfig); err != nil {
+		fmt.Printf("Error parsing configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Validate the configuration
+	if err := validateCampaignConfig(&campaignConfig); err != nil {
+		fmt.Printf("Invalid campaign configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Print configuration summary
+	printCampaignConfigSummary(&campaignConfig)
+
+	// If dry run, just print configuration summary and exit
+	if dryRun {
+		fmt.Println("\nDry run: No campaigns will be created.")
+		return
+	}
+
+	// Ask for confirmation
+	fmt.Print("\nDo you want to create this campaign? (y/n): ")
+	var confirm string
+	fmt.Scanln(&confirm)
+
+	if confirm != "y" && confirm != "Y" && confirm != "yes" && confirm != "Yes" {
+		fmt.Println("Campaign creation cancelled.")
+		return
+	}
+
+	// Create auth client
+	authClient := auth.NewFacebookAuth(
+		cfg.AppID,
+		cfg.AppSecret,
+		cfg.AccessToken,
+		cfg.APIVersion,
+	)
+
+	// Create campaign creator from the internal/campaign package
+	creator := internal_campaign.NewCampaignCreator(authClient, cfg.AccountID)
+
+	fmt.Println("Creating campaign...")
+
+	// Create the campaign
+	err = creator.CreateFromConfig(&campaignConfig)
+	if err != nil {
+		fmt.Printf("Error creating campaign: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Campaign created successfully!")
+}
+
+// validateCampaignConfig validates the campaign configuration
+func validateCampaignConfig(config *models.CampaignConfig) error {
+	if config.Name == "" {
+		return fmt.Errorf("campaign name is required")
+	}
+
+	if config.Objective == "" {
+		return fmt.Errorf("campaign objective is required")
+	}
+
+	if config.BuyingType == "" {
+		return fmt.Errorf("campaign buying type is required")
+	}
+
+	if config.DailyBudget == 0 && config.LifetimeBudget == 0 {
+		return fmt.Errorf("either daily budget or lifetime budget is required")
+	}
+
+	if len(config.AdSets) == 0 {
+		return fmt.Errorf("at least one ad set is required")
+	}
+
+	for i, adSet := range config.AdSets {
+		if adSet.Name == "" {
+			return fmt.Errorf("ad set #%d: name is required", i+1)
+		}
+
+		if adSet.OptimizationGoal == "" {
+			return fmt.Errorf("ad set #%d: optimization goal is required", i+1)
+		}
+
+		if adSet.BillingEvent == "" {
+			return fmt.Errorf("ad set #%d: billing event is required", i+1)
+		}
+
+		if len(adSet.Targeting) == 0 {
+			return fmt.Errorf("ad set #%d: targeting is required", i+1)
+		}
+	}
+
+	if len(config.Ads) == 0 {
+		return fmt.Errorf("at least one ad is required")
+	}
+
+	for i, ad := range config.Ads {
+		if ad.Name == "" {
+			return fmt.Errorf("ad #%d: name is required", i+1)
+		}
+
+		// Check for title or name in the creative
+		// Different templates might use Name instead of Title field
+		if ad.Creative.Title == "" && ad.Creative.Name == "" {
+			return fmt.Errorf("ad #%d: creative title/name is required", i+1)
+		}
+
+		if ad.Creative.LinkURL == "" {
+			return fmt.Errorf("ad #%d: creative link URL is required", i+1)
+		}
+
+		// Now validate the Page ID as well, which is required
+		if ad.Creative.PageID == "" {
+			return fmt.Errorf("ad #%d: creative page_id is required", i+1)
+		}
+	}
+
+	return nil
+}
+
+// printCampaignConfigSummary prints a summary of the campaign configuration
+func printCampaignConfigSummary(config *models.CampaignConfig) {
+	fmt.Println("\nCampaign Configuration Summary:")
+	fmt.Printf("Name: %s\n", config.Name)
+	fmt.Printf("Status: %s\n", config.Status)
+	fmt.Printf("Objective: %s\n", config.Objective)
+	fmt.Printf("Buying Type: %s\n", config.BuyingType)
+
+	if config.DailyBudget > 0 {
+		fmt.Printf("Daily Budget: $%.2f\n", config.DailyBudget)
+	}
+
+	if config.LifetimeBudget > 0 {
+		fmt.Printf("Lifetime Budget: $%.2f\n", config.LifetimeBudget)
+	}
+
+	if config.StartTime != "" {
+		fmt.Printf("Start Time: %s\n", config.StartTime)
+	}
+
+	if config.EndTime != "" {
+		fmt.Printf("End Time: %s\n", config.EndTime)
+	}
+
+	fmt.Printf("\nAd Sets: %d\n", len(config.AdSets))
+	for i, adSet := range config.AdSets {
+		fmt.Printf("  %d. %s (Status: %s)\n", i+1, adSet.Name, adSet.Status)
+		fmt.Printf("     Optimization Goal: %s\n", adSet.OptimizationGoal)
+		fmt.Printf("     Billing Event: %s\n", adSet.BillingEvent)
+
+		// Print targeting summary (simplified)
+		if targeting, ok := adSet.Targeting["geo_locations"].(map[string]interface{}); ok {
+			if countries, ok := targeting["countries"].([]interface{}); ok {
+				fmt.Printf("     Countries: %v\n", countries)
+			}
+		}
+
+		if ageMin, ok := adSet.Targeting["age_min"].(float64); ok {
+			if ageMax, ok := adSet.Targeting["age_max"].(float64); ok {
+				fmt.Printf("     Age Range: %d-%d\n", int(ageMin), int(ageMax))
+			}
+		}
+	}
+
+	fmt.Printf("\nAds: %d\n", len(config.Ads))
+	for i, ad := range config.Ads {
+		fmt.Printf("  %d. %s (Status: %s)\n", i+1, ad.Name, ad.Status)
+		// Display either Title or Name
+		titleValue := ad.Creative.Title
+		if titleValue == "" {
+			titleValue = ad.Creative.Name
+		}
+		fmt.Printf("     Title: %s\n", titleValue)
+		if len(ad.Creative.Body) > 50 {
+			fmt.Printf("     Body: %s...\n", ad.Creative.Body[:50])
+		} else {
+			fmt.Printf("     Body: %s\n", ad.Creative.Body)
+		}
+		fmt.Printf("     Link URL: %s\n", ad.Creative.LinkURL)
+		if ad.Creative.CallToAction != "" {
+			fmt.Printf("     Call to Action: %s\n", ad.Creative.CallToAction)
+		}
+		fmt.Printf("     Page ID: %s\n", ad.Creative.PageID)
+	}
+}
+
+func analyzeAudience(cfg *config.Config) {
+	// Parse flags and subcommands
+	if len(os.Args) < 3 {
+		fmt.Println("Missing audience subcommand. Available commands: search, filter, stats")
+		os.Exit(1)
+	}
+
+	// Create auth client
+	authClient := auth.NewFacebookAuth(
+		cfg.AppID,
+		cfg.AppSecret,
+		cfg.AccessToken,
+		cfg.APIVersion,
+	)
+
+	// Create audience analyzer
+	analyzer := audience.NewAudienceAnalyzer(authClient, cfg.AccountID)
+
+	// Process subcommand
+	subCmd := os.Args[2]
+
+	switch subCmd {
+	case "search":
+		searchAudience(analyzer, os.Args[3:])
+	case "filter":
+		filterAudience(analyzer, os.Args[3:])
+	case "stats":
+		audienceStats(analyzer, os.Args[3:])
+	default:
+		fmt.Printf("Unknown audience subcommand: %s\n", subCmd)
+		fmt.Println("Available subcommands: search, filter, stats")
+		os.Exit(1)
+	}
+}
+
+// searchAudience handles searching for audience segments
+func searchAudience(analyzer *audience.AudienceAnalyzer, args []string) {
+	if len(args) < 1 {
+		fmt.Println("Missing search query. Use: fbads audience search <query> [--type TYPE] [--output FILE]")
+		os.Exit(1)
+	}
+
+	query := args[0]
+	searchType := "interest" // Default to interests
+	var outputFile string
+
+	// Parse flags
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--type", "-t":
+			if i+1 < len(args) {
+				searchType = args[i+1]
+				i++
+			}
+		case "--output", "-o":
+			if i+1 < len(args) {
+				outputFile = args[i+1]
+				i++
+			}
+		}
+	}
+
+	var segments []audience.AudienceSegment
+	var err error
+
+	// Perform search based on type
+	switch searchType {
+	case "interest":
+		fmt.Printf("Searching for interests matching: %s\n", query)
+		segments, err = analyzer.GetInterests(query)
+	case "behavior":
+		fmt.Printf("Searching for behaviors matching: %s\n", query)
+		segments, err = analyzer.GetBehaviors(query)
+	default:
+		fmt.Printf("Unknown segment type: %s. Supported types: interest, behavior\n", searchType)
+		os.Exit(1)
+	}
+
+	if err != nil {
+		fmt.Printf("Error searching for audience segments: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Display results
+	if len(segments) == 0 {
+		fmt.Printf("No %ss found matching your query.\n", searchType)
+		return
+	}
+
+	fmt.Printf("Found %d %ss matching '%s':\n\n", len(segments), searchType, query)
+	for i, segment := range segments {
+		fmt.Printf("%d. %s (ID: %s)\n", i+1, segment.Name, segment.ID)
+		if segment.Description != "" {
+			fmt.Printf("   Description: %s\n", segment.Description)
+		}
+		if segment.Type != "" {
+			fmt.Printf("   Type: %s\n", segment.Type)
+		}
+		if segment.Path != "" {
+			fmt.Printf("   Category: %s\n", segment.Path)
+		}
+		if segment.Size > 0 {
+			fmt.Printf("   Audience size: %d\n", segment.Size)
+		}
+		fmt.Println()
+	}
+
+	// Export to file if requested
+	if outputFile != "" {
+		err = analyzer.ExportAudienceData(outputFile, segments)
+		if err != nil {
+			fmt.Printf("Error exporting to file: %v\n", err)
+			return
+		}
+		fmt.Printf("Exported %d segments to %s\n", len(segments), outputFile)
+	}
+}
+
+// filterAudience handles filtering audience segments
+func filterAudience(analyzer *audience.AudienceAnalyzer, args []string) {
+	var query string
+	var minSize, maxSize int64
+	var types, keywords string
+	var outputFile string
+
+	// Parse flags
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--query", "-q":
+			if i+1 < len(args) {
+				query = args[i+1]
+				i++
+			}
+		case "--min-size":
+			if i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &minSize)
+				i++
+			}
+		case "--max-size":
+			if i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &maxSize)
+				i++
+			}
+		case "--types", "-t":
+			if i+1 < len(args) {
+				types = args[i+1]
+				i++
+			}
+		case "--keywords", "-k":
+			if i+1 < len(args) {
+				keywords = args[i+1]
+				i++
+			}
+		case "--output", "-o":
+			if i+1 < len(args) {
+				outputFile = args[i+1]
+				i++
+			}
+		}
+	}
+
+	// First, we need to load some audience segments to filter
+	// For simplicity, we'll search for a default term if no query is provided
+	if query == "" {
+		query = "shopping"
+	}
+
+	// For now, we'll just log what we would do in a full implementation
+	fmt.Printf("Loading audience segments for '%s'...\n", query)
+	
+	// In a real implementation, we would search for both interests and behaviors
+	// For example:
+	// interests, err := analyzer.GetInterests(query)
+	// if err != nil {
+	//     fmt.Printf("Error searching for interests: %v\n", err)
+	//     os.Exit(1)
+	// }
+	// 
+	// behaviors, err := analyzer.GetBehaviors(query)
+	// if err != nil {
+	//     fmt.Printf("Error searching for behaviors: %v\n", err)
+	// }
+
+	// Create filter options
+	options := make(map[string]interface{})
+
+	if minSize > 0 {
+		options["min_size"] = minSize
+	}
+
+	if maxSize > 0 {
+		options["max_size"] = maxSize
+	}
+
+	if types != "" {
+		typesArray := strings.Split(types, ",")
+		options["types"] = typesArray
+	}
+
+	if keywords != "" {
+		keywordsArray := strings.Split(keywords, ",")
+		options["keywords"] = keywordsArray
+	}
+
+	fmt.Println("Filtering audience segments...")
+	filtered, err := analyzer.FilterAudiences(options)
+	if err != nil {
+		fmt.Printf("Error filtering audiences: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Display results
+	if len(filtered) == 0 {
+		fmt.Println("No audience segments match your filter criteria.")
+		return
+	}
+
+	fmt.Printf("Found %d audience segments matching your criteria:\n\n", len(filtered))
+	for i, segment := range filtered {
+		fmt.Printf("%d. %s (ID: %s)\n", i+1, segment.Name, segment.ID)
+		fmt.Printf("   Type: %s\n", segment.Type)
+		if segment.Description != "" {
+			fmt.Printf("   Description: %s\n", segment.Description)
+		}
+		if segment.Size > 0 {
+			fmt.Printf("   Audience size: %d\n", segment.Size)
+		}
+		fmt.Println()
+	}
+
+	// Export to file if requested
+	if outputFile != "" {
+		err = analyzer.ExportAudienceData(outputFile, filtered)
+		if err != nil {
+			fmt.Printf("Error exporting to file: %v\n", err)
+			return
+		}
+		fmt.Printf("Exported filtered audience segments to %s\n", outputFile)
+	}
+}
+
+// audienceStats handles collecting audience statistics
+func audienceStats(analyzer *audience.AudienceAnalyzer, args []string) {
+	var campaignID string
+	days := 30 // Default to 30 days
+
+	// Parse flags
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--campaign", "-c":
+			if i+1 < len(args) {
+				campaignID = args[i+1]
+				i++
+			}
+		case "--days", "-d":
+			if i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &days)
+				i++
+			}
+		}
+	}
+
+	// Check if campaign ID is provided
+	if campaignID == "" {
+		fmt.Println("Missing campaign ID. Use: fbads audience stats --campaign CAMPAIGN_ID [--days DAYS]")
+		os.Exit(1)
+	}
+
+	fmt.Printf("Collecting audience statistics for campaign %s over the last %d days...\n", campaignID, days)
+	err := analyzer.CollectSegmentStatistics(campaignID, days)
+	if err != nil {
+		fmt.Printf("Error collecting audience statistics: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Successfully collected audience statistics.")
+}
+
+func generateReport(cfg *config.Config, reportType string, args []string) {
+	// Create auth client
+	authClient := auth.NewFacebookAuth(
+		cfg.AppID,
+		cfg.AppSecret,
+		cfg.AccessToken,
+		cfg.APIVersion,
+	)
+
+	// Create metrics collector
+	metricsCollector := api.NewMetricsCollector(authClient, cfg.AccountID)
+	
+	// Create audience analyzer
+	audienceAnalyzer := audience.NewAudienceAnalyzer(authClient, cfg.AccountID)
+
+	// Create performance analyzer
+	analyzer := api.NewPerformanceAnalyzer(metricsCollector, audienceAnalyzer)
+
+	// Set default reports directory
+	reportsDir := filepath.Join(cfg.ConfigDir, "reports")
+
+	// Create report generator
+	reportGenerator := api.NewReportGenerator(analyzer, metricsCollector, reportsDir)
+
+	var err error
+
+	switch reportType {
+	case "daily":
+		fmt.Println("Generating daily report...")
+		err = reportGenerator.GenerateDailyReport()
+	case "weekly":
+		fmt.Println("Generating weekly report...")
+		err = reportGenerator.GenerateWeeklyReport()
+	case "custom":
+		if len(args) < 2 {
+			fmt.Println("Missing date range. Use: fbads report custom <start_date> <end_date>")
+			fmt.Println("Date format: YYYY-MM-DD")
+			os.Exit(1)
+		}
+
+		startDate, err := time.Parse("2006-01-02", args[0])
+		if err != nil {
+			fmt.Printf("Invalid start date format: %v\n", err)
+			os.Exit(1)
+		}
+
+		endDate, err := time.Parse("2006-01-02", args[1])
+		if err != nil {
+			fmt.Printf("Invalid end date format: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Generating custom report for period: %s to %s\n", args[0], args[1])
+		err = reportGenerator.GenerateCustomReport(startDate, endDate)
+	default:
+		fmt.Printf("Unknown report type: %s\n", reportType)
+		fmt.Println("Available report types: daily, weekly, custom")
+		os.Exit(1)
+	}
+
+	if err != nil {
+		fmt.Printf("Error generating report: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Report generated successfully in: %s\n", reportsDir)
+}
+
+func optimizeCampaigns(cfg *config.Config) {
+	fmt.Println("Optimizing campaigns...")
+	fmt.Println("(This is a placeholder - actual implementation pending)")
+	// TODO: Implement campaign optimization
+}
+
+func configureApp(cfg *config.Config, configPath string) {
+	fmt.Println("Configuring application...")
+
+	// Simple configuration prompt (to be expanded)
+	fmt.Print("Enter Facebook App ID: ")
+	fmt.Scanln(&cfg.AppID)
+
+	fmt.Print("Enter Facebook App Secret: ")
+	fmt.Scanln(&cfg.AppSecret)
+
+	fmt.Print("Enter Facebook Access Token: ")
+	fmt.Scanln(&cfg.AccessToken)
+
+	fmt.Print("Enter Facebook Ad Account ID (without act_ prefix): ")
+	fmt.Scanln(&cfg.AccountID)
+
+	// Save configuration
+	if err := cfg.SaveConfig(configPath); err != nil {
+		fmt.Printf("Error saving configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Configuration saved successfully!")
+}
+
+func startDashboard(cfg *config.Config) {
+	// Parse optional port flag
+	port := 8080
+	if len(os.Args) >= 3 {
+		fmt.Sscanf(os.Args[2], "%d", &port)
+	}
+
+	// Create auth client
+	authClient := auth.NewFacebookAuth(
+		cfg.AppID,
+		cfg.AppSecret,
+		cfg.AccessToken,
+		cfg.APIVersion,
+	)
+
+	// Create metrics collector
+	metricsCollector := api.NewMetricsCollector(authClient, cfg.AccountID)
+	
+	// Create audience analyzer
+	audienceAnalyzer := audience.NewAudienceAnalyzer(authClient, cfg.AccountID)
+
+	// Create performance analyzer
+	analyzer := api.NewPerformanceAnalyzer(metricsCollector, audienceAnalyzer)
+
+	// Set dashboard directories
+	dashboardDir := filepath.Join(cfg.ConfigDir, "dashboard")
+	templateDir := filepath.Join(dashboardDir, "templates")
+	dataDir := filepath.Join(dashboardDir, "data")
+
+	// Create dashboard
+	dashboard := api.NewDashboard(metricsCollector, analyzer, port, templateDir, dataDir)
+
+	// Create dashboard files
+	if err := dashboard.CreateDashboardFiles(); err != nil {
+		fmt.Printf("Error creating dashboard files: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Starting dashboard on http://localhost:%d\n", port)
+
+	// Start dashboard
+	if err := dashboard.Start(); err != nil {
+		fmt.Printf("Error starting dashboard: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// exportCampaign exports a campaign by ID to a configuration file
+func exportCampaign(cfg *config.Config, campaignID string, args []string) {
+	// Determine output file name
+	outputFile := campaignID + ".json"
+	if len(args) > 0 {
+		outputFile = args[0]
+	}
+
+	// Create auth client
+	authClient := auth.NewFacebookAuth(
+		cfg.AppID,
+		cfg.AppSecret,
+		cfg.AccessToken,
+		cfg.APIVersion,
+	)
+
+	// Create API client
+	client := api.NewClient(authClient, cfg.AccountID)
+
+	fmt.Printf("Fetching campaign details for ID: %s\n", campaignID)
+
+	// Get campaign details
+	details, err := client.GetCampaignDetails(campaignID)
+	if err != nil {
+		fmt.Printf("Error fetching campaign details: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Convert to a campaign configuration
+	config := convertToConfig(details)
+
+	// Write to file
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		fmt.Printf("Error serializing configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := os.WriteFile(outputFile, data, 0644); err != nil {
+		fmt.Printf("Error writing configuration to file: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Campaign exported successfully to: %s\n", outputFile)
+}
+
+// listPages lists all Facebook Pages accessible with the current access token
+func listPages(cfg *config.Config) {
+	// Parse flags
+	var format string
+
+	// Check for flags
+	args := os.Args[2:]
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--format", "-f":
+			if i+1 < len(args) {
+				format = args[i+1]
+				i++
+			}
+		}
+	}
+
+	// Set default format
+	if format == "" {
+		format = "table" // Default to table format
+	}
+
+	// Create auth client
+	authClient := auth.NewFacebookAuth(
+		cfg.AppID,
+		cfg.AppSecret,
+		cfg.AccessToken,
+		cfg.APIVersion,
+	)
+
+	// Create API client
+	client := api.NewClient(authClient, cfg.AccountID)
+
+	fmt.Println("Fetching available Facebook Pages...")
+
+	// Get pages
+	pages, err := client.GetPages()
+	if err != nil {
+		fmt.Printf("Error fetching pages: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(pages) == 0 {
+		fmt.Println("No Facebook Pages found for this access token.")
+		fmt.Println("Make sure your access token has the 'pages_show_list' and 'pages_read_engagement' permissions.")
+		return
+	}
+
+	// Display results based on format
+	switch format {
+	case "json":
+		displayPagesJSON(pages)
+	case "csv":
+		displayPagesCSV(pages)
+	case "table":
+		displayPagesTable(pages)
+	default:
+		fmt.Printf("Unknown format: %s. Supported formats: table, json, csv\n", format)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\nTotal: %d Facebook Pages\n", len(pages))
+	fmt.Println("\nNote: Use the page ID in your campaign configuration's 'page_id' field.")
+}
+
+// displayPagesTable displays pages in a formatted table
+func displayPagesTable(pages []models.Page) {
+	if len(pages) == 0 {
+		fmt.Println("No pages found.")
+		return
+	}
+
+	// Calculate column widths
+	idWidth := 20
+	nameWidth := 40
+	categoryWidth := 25
+
+	// Print header
+	fmt.Printf("%-*s | %-*s | %-*s\n",
+		idWidth, "PAGE ID",
+		nameWidth, "NAME",
+		categoryWidth, "CATEGORY")
+
+	// Print separator
+	fmt.Printf("%s-+-%s-+-%s\n",
+		strings.Repeat("-", idWidth),
+		strings.Repeat("-", nameWidth),
+		strings.Repeat("-", categoryWidth))
+
+	// Print rows
+	for _, page := range pages {
+		fmt.Printf("%-*s | %-*s | %-*s\n",
+			idWidth, page.ID,
+			nameWidth, truncateString(page.Name, nameWidth),
+			categoryWidth, truncateString(page.Category, categoryWidth))
+	}
+}
+
+// displayPagesJSON displays pages in JSON format
+func displayPagesJSON(pages []models.Page) {
+	// Create a response structure to wrap the pages
+	response := struct {
+		Pages []models.Page `json:"pages"`
+		Count int           `json:"count"`
+	}{
+		Pages: pages,
+		Count: len(pages),
+	}
+
+	// Marshal to JSON
+	data, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		fmt.Printf("Error encoding to JSON: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(string(data))
+}
+
+// displayPagesCSV displays pages in CSV format
+func displayPagesCSV(pages []models.Page) {
+	// Print header
+	fmt.Println("id,name,category")
+
+	// Print rows
+	for _, page := range pages {
+		fmt.Printf("%s,%s,%s\n",
+			page.ID,
+			escapeCSV(page.Name),
+			escapeCSV(page.Category))
+	}
+}
+
+// convertToConfig converts campaign details to a configuration
+func convertToConfig(details *models.CampaignDetails) *models.CampaignConfig {
+	config := &models.CampaignConfig{
+		Name:                details.Name,
+		Status:              details.Status,
+		Objective:           details.ObjectiveType,
+		BuyingType:          details.BuyingType,
+		SpecialAdCategories: details.SpecialAdCategories,
+		BidStrategy:         details.BidStrategy,
+		DailyBudget:         details.DailyBudget,
+		LifetimeBudget:      details.LifetimeBudget,
+		AdSets:              []models.AdSetConfig{},
+		Ads:                 []models.AdConfig{},
+	}
+
+	// Add start/end times if available
+	if !details.StartTime.IsZero() {
+		config.StartTime = details.StartTime.Format(time.RFC3339)
+	}
+
+	if !details.StopTime.IsZero() {
+		config.EndTime = details.StopTime.Format(time.RFC3339)
+	}
+
+	// Process AdSets
+	for _, adset := range details.AdSets {
+		adsetConfig := models.AdSetConfig{
+			Name:             adset.Name,
+			Status:           adset.Status,
+			Targeting:        adset.Targeting,
+			OptimizationGoal: adset.OptimizationGoal,
+			BillingEvent:     adset.BillingEvent,
+			BidAmount:        adset.BidAmount,
+		}
+
+		// Add start/end times if available
+		if !adset.StartTime.IsZero() {
+			adsetConfig.StartTime = adset.StartTime.Format(time.RFC3339)
+		}
+
+		if !adset.EndTime.IsZero() {
+			adsetConfig.EndTime = adset.EndTime.Format(time.RFC3339)
+		}
+
+		config.AdSets = append(config.AdSets, adsetConfig)
+	}
+
+	// Process Ads
+	for _, ad := range details.Ads {
+		adConfig := models.AdConfig{
+			Name:   ad.Name,
+			Status: ad.Status,
+			Creative: models.CreativeConfig{
+				Name:         ad.Creative.Title, // Use name field for title value per API requirements
+				Body:         ad.Creative.Body,
+				ImageURL:     ad.Creative.ImageURL,
+				LinkURL:      ad.Creative.LinkURL,
+				CallToAction: ad.Creative.CallToActionType,
+				PageID:       ad.Creative.PageID,
+			},
+		}
+
+		config.Ads = append(config.Ads, adConfig)
+	}
+
+	return config
+}
+
+func printUsage() {
+	fmt.Println("Usage: fbads <command> [arguments]")
+	fmt.Println("\nAvailable commands:")
+	fmt.Println("  list [options]           List all campaigns")
+	fmt.Println("    --limit, -l <num>      Limit the number of results (default: 10)")
+	fmt.Println("    --status, -s <status>  Filter by status (ACTIVE, PAUSED, etc.)")
+	fmt.Println("    --format, -f <format>  Output format (table, json, csv)")
+	fmt.Println("  create <config_file>     Create a new campaign from configuration")
+	fmt.Println("    --dry-run, -d          Preview the campaign without creating it")
+	fmt.Println("  export <campaign_id> [output_file]")
+	fmt.Println("                           Export campaign to configuration file")
+	fmt.Println("  pages                    List Facebook Pages available for the API token")
+	fmt.Println("  audience <subcommand> [args]")
+	fmt.Println("                           Audience targeting and analysis commands")
+	fmt.Println("    - search <query>       Search for audience interests or behaviors")
+	fmt.Println("      --type, -t <type>    Segment type (interest, behavior)")
+	fmt.Println("      --output, -o <file>  Export results to file")
+	fmt.Println("    - filter               Filter audience segments")
+	fmt.Println("      --query, -q <query>  Initial search query")
+	fmt.Println("      --min-size <size>    Minimum audience size")
+	fmt.Println("      --max-size <size>    Maximum audience size")
+	fmt.Println("      --types <types>      Comma-separated list of types")
+	fmt.Println("      --keywords, -k <kw>  Comma-separated list of keywords")
+	fmt.Println("      --output, -o <file>  Export results to file")
+	fmt.Println("    - stats                Collect segment statistics")
+	fmt.Println("      --campaign, -c <id>  Campaign ID to analyze")
+	fmt.Println("      --days, -d <days>    Number of days to analyze (default: 30)")
+	fmt.Println("  report <type> [args]     Generate performance reports")
+	fmt.Println("    - daily                Daily report for yesterday")
+	fmt.Println("    - weekly               Weekly report for the last 7 days")
+	fmt.Println("    - custom <start> <end> Custom date range report (YYYY-MM-DD format)")
+	fmt.Println("  optimize                 Optimize campaigns based on performance")
+	fmt.Println("  dashboard [port]         Start web dashboard (default port: 8080)")
+	fmt.Println("  config                   Configure the application")
+	fmt.Println("  help                     Show help information")
+}
