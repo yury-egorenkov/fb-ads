@@ -218,9 +218,14 @@ func (c *CampaignCreator) CreateCreative(config models.CreativeConfig) (string, 
 		linkData["message"] = config.Body
 	}
 	
+	// NOTE: ImageURL is no longer supported in link_data of object_story_spec per Facebook API
+	// Images should be uploaded separately or referenced by ID
+	// This code is commented out to prevent API errors
+	/*
 	if config.ImageURL != "" {
 		linkData["image_url"] = config.ImageURL
 	}
+	*/
 	
 	if config.CallToAction != "" {
 		callToAction := map[string]string{

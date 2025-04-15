@@ -102,6 +102,8 @@ When you duplicate a campaign:
 - By default, campaigns are created in PAUSED status for safety
 - Date parameters must use the format YYYY-MM-DD (e.g., 2025-12-31)
 - Budget factor can be any positive decimal (e.g., 0.5 = half budget, 2.0 = double)
+- Due to Facebook API changes, the `image_url` field is no longer supported in ad creatives.
+  Images will need to be uploaded separately or referenced by ID when modifying the duplicated ads.
 
 ## Troubleshooting
 

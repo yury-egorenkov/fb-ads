@@ -1499,6 +1499,9 @@ func duplicateCampaign(cfg *config.Config, campaignID string, args []string) {
 	
 	// For duplication, we need to ensure we're not carrying over any IDs
 	// The Create function will assign new IDs
+	
+	// Remove any unsupported fields from creatives based on recent API changes
+	// The Facebook API error shows that image_url is no longer supported in link_data
 
 	// Update the campaign config with the new parameters
 	campaignConfig.Name = campaignName
@@ -1550,6 +1553,10 @@ func duplicateCampaign(cfg *config.Config, campaignID string, args []string) {
 		}
 		// Set the status to match the campaign
 		campaignConfig.Ads[i].Status = status
+		
+		// Remove ImageURL field which is no longer supported by the Facebook API
+		// This fixes the error "The field image_url is not supported in the field link_data of object_story_spec"
+		campaignConfig.Ads[i].Creative.ImageURL = ""
 	}
 
 	// Print configuration summary
