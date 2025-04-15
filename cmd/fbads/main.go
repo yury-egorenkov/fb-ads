@@ -1557,6 +1557,12 @@ func duplicateCampaign(cfg *config.Config, campaignID string, args []string) {
 		// Remove ImageURL field which is no longer supported by the Facebook API
 		// This fixes the error "The field image_url is not supported in the field link_data of object_story_spec"
 		campaignConfig.Ads[i].Creative.ImageURL = ""
+		
+		// Ensure the LinkURL is not empty
+		if campaignConfig.Ads[i].Creative.LinkURL == "" {
+			fmt.Println("Warning: Link URL is empty in ad creative. Setting a default link to prevent API error.")
+			campaignConfig.Ads[i].Creative.LinkURL = "https://corespirit.com/funnels/pract"
+		}
 	}
 
 	// Print configuration summary

@@ -198,6 +198,12 @@ func (c *CampaignCreator) CreateCreative(config models.CreativeConfig) (string, 
 	
 	// Create link_data object
 	linkData := make(map[string]interface{})
+	
+	// Validate that LinkURL is not empty, as it's required by the Facebook API
+	if config.LinkURL == "" {
+		return "", fmt.Errorf("link_url is required for ad creatives and cannot be empty")
+	}
+	
 	linkData["link"] = config.LinkURL
 	
 	// Note: As per the API error, title is not supported directly in link_data

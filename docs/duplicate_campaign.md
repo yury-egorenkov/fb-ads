@@ -104,6 +104,8 @@ When you duplicate a campaign:
 - Budget factor can be any positive decimal (e.g., 0.5 = half budget, 2.0 = double)
 - Due to Facebook API changes, the `image_url` field is no longer supported in ad creatives.
   Images will need to be uploaded separately or referenced by ID when modifying the duplicated ads.
+- The `link_url` field is required for all ad creatives. If the original campaign doesn't have a valid link URL,
+  the duplication tool will automatically set a default URL to prevent API errors.
 
 ## Troubleshooting
 
@@ -114,6 +116,10 @@ When you duplicate a campaign:
 - **Budget Issues**: Check that your ad account has sufficient funds
 - **Date Format Errors**: Ensure dates are in the format YYYY-MM-DD
 - **Status Errors**: Status must be one of: ACTIVE, PAUSED, ARCHIVED
+- **Missing Link URL**: All ad creatives require a link URL; if you see "The link field is required" error, ensure
+  your original campaign has valid link URLs for all ads
+- **Unsupported Image URL**: Facebook no longer supports specifying images via URL directly; instead, 
+  upload images via the Facebook API first and use the resulting image IDs
 
 ### Getting Help
 
