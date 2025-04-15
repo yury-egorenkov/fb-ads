@@ -174,7 +174,7 @@ func (m *MetricsCollector) CollectCampaignMetrics(request InsightsRequest) ([]ut
 			Impressions: int(impressions),
 			Clicks:      int(clicks),
 			Conversions: conversions,
-			CPC:         spend / clicks,
+			CPC:         calculateSafeCPC(spend, clicks),
 			CPM:         cpm,
 			CTR:         ctr * 100, // Convert to percentage
 			ROAS:        roas,
@@ -191,4 +191,12 @@ func (m *MetricsCollector) CollectCampaignMetrics(request InsightsRequest) ([]ut
 func (m *MetricsCollector) StoreMetrics(performances []utils.CampaignPerformance, filePath string) error {
 	// TODO: Implement metrics storage
 	return nil
+}
+
+// calculateSafeCPC calculates CPC (Cost Per Click) safely by avoiding division by zero
+func calculateSafeCPC(spend, clicks float64) float64 {
+	if clicks <= 0 {
+		return 0
+	}
+	return spend / clicks
 }

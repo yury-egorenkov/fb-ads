@@ -863,6 +863,10 @@ func generateReport(cfg *config.Config, reportType string, args []string) {
 
 		fmt.Printf("Generating custom report for period: %s to %s\n", args[0], args[1])
 		err = reportGenerator.GenerateCustomReport(startDate, endDate)
+		if err != nil {
+			fmt.Printf("Invalid end date format: %v\n", err)
+			os.Exit(1)
+		}
 	default:
 		fmt.Printf("Unknown report type: %s\n", reportType)
 		fmt.Println("Available report types: daily, weekly, custom")

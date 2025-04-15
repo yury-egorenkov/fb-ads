@@ -28,27 +28,27 @@ func (r *ReportGenerator) GenerateDailyReport() error {
 	// Create time range for yesterday
 	yesterday := time.Now().AddDate(0, 0, -1)
 	yesterdayStr := yesterday.Format("2006-01-02")
-	
+
 	timeRange := TimeRange{
 		Since: yesterdayStr,
 		Until: yesterdayStr,
 	}
-	
+
 	// Generate analysis
 	analysis, err := r.analyzer.AnalyzeCampaignPerformance(timeRange)
 	if err != nil {
 		return fmt.Errorf("error analyzing performance: %w", err)
 	}
-	
+
 	// Create output directory if it doesn't exist
 	if err := os.MkdirAll(r.outputDir, 0755); err != nil {
 		return fmt.Errorf("error creating output directory: %w", err)
 	}
-	
+
 	// Generate report file name
 	reportFileName := fmt.Sprintf("daily_report_%s.json", yesterdayStr)
 	reportPath := filepath.Join(r.outputDir, reportFileName)
-	
+
 	// Save report
 	return r.analyzer.GenerateReport(analysis, reportPath)
 }
@@ -59,28 +59,28 @@ func (r *ReportGenerator) GenerateWeeklyReport() error {
 	today := time.Now()
 	endDate := today.AddDate(0, 0, -1)
 	startDate := today.AddDate(0, 0, -7)
-	
+
 	timeRange := TimeRange{
 		Since: startDate.Format("2006-01-02"),
 		Until: endDate.Format("2006-01-02"),
 	}
-	
+
 	// Generate analysis
 	analysis, err := r.analyzer.AnalyzeCampaignPerformance(timeRange)
 	if err != nil {
 		return fmt.Errorf("error analyzing performance: %w", err)
 	}
-	
+
 	// Create output directory if it doesn't exist
 	if err := os.MkdirAll(r.outputDir, 0755); err != nil {
 		return fmt.Errorf("error creating output directory: %w", err)
 	}
-	
+
 	// Generate report file name
 	weekNum := int(today.Day()/7) + 1
 	reportFileName := fmt.Sprintf("weekly_report_%s_week%d.json", today.Format("2006-01"), weekNum)
 	reportPath := filepath.Join(r.outputDir, reportFileName)
-	
+
 	// Save report
 	return r.analyzer.GenerateReport(analysis, reportPath)
 }
@@ -91,24 +91,24 @@ func (r *ReportGenerator) GenerateCustomReport(startDate, endDate time.Time) err
 		Since: startDate.Format("2006-01-02"),
 		Until: endDate.Format("2006-01-02"),
 	}
-	
+
 	// Generate analysis
 	analysis, err := r.analyzer.AnalyzeCampaignPerformance(timeRange)
 	if err != nil {
 		return fmt.Errorf("error analyzing performance: %w", err)
 	}
-	
+
 	// Create output directory if it doesn't exist
 	if err := os.MkdirAll(r.outputDir, 0755); err != nil {
 		return fmt.Errorf("error creating output directory: %w", err)
 	}
-	
+
 	// Generate report file name
-	reportFileName := fmt.Sprintf("custom_report_%s_to_%s.json", 
-		startDate.Format("2006-01-02"), 
+	reportFileName := fmt.Sprintf("custom_report_%s_to_%s.json",
+		startDate.Format("2006-01-02"),
 		endDate.Format("2006-01-02"))
 	reportPath := filepath.Join(r.outputDir, reportFileName)
-	
+
 	// Save report
 	return r.analyzer.GenerateReport(analysis, reportPath)
 }

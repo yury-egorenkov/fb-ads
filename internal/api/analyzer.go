@@ -142,8 +142,18 @@ func (p *PerformanceAnalyzer) AnalyzeCampaignPerformance(timeRange TimeRange) (*
 		}
 		
 		// Otherwise sort by CPA (descending)
-		return (performances[i].Spend / float64(performances[i].Conversions)) > 
-		       (performances[j].Spend / float64(performances[j].Conversions))
+		cpaI := performances[i].Spend / float64(performances[i].Conversions)
+		cpaJ := performances[j].Spend / float64(performances[j].Conversions)
+		
+		// Handle NaN cases safely
+		if math.IsNaN(cpaI) {
+			return false
+		}
+		if math.IsNaN(cpaJ) {
+			return true
+		}
+		
+		return cpaI > cpaJ
 	})
 	
 	// Get worst 5 campaigns by CPA
@@ -168,6 +178,9 @@ func (p *PerformanceAnalyzer) AnalyzeCampaignPerformance(timeRange TimeRange) (*
 
 // GenerateReport generates a performance report in JSON format
 func (p *PerformanceAnalyzer) GenerateReport(analysis *PerformanceAnalysis, filePath string) error {
+	// Sanitize any potential NaN values
+	sanitizeAnalysis(analysis)
+	
 	// Convert analysis to JSON
 	data, err := json.MarshalIndent(analysis, "", "  ")
 	if err != nil {
@@ -180,6 +193,71 @@ func (p *PerformanceAnalyzer) GenerateReport(analysis *PerformanceAnalysis, file
 	}
 	
 	return nil
+}
+
+// sanitizeAnalysis replaces any NaN or Inf values with 0 to prevent JSON marshaling errors
+func sanitizeAnalysis(analysis *PerformanceAnalysis) {
+	// Replace NaN or Inf in main metrics
+	if math.IsNaN(analysis.AverageCPA) || math.IsInf(analysis.AverageCPA, 0) {
+		analysis.AverageCPA = 0
+	}
+	if math.IsNaN(analysis.AverageCTR) || math.IsInf(analysis.AverageCTR, 0) {
+		analysis.AverageCTR = 0
+	}
+	if math.IsNaN(analysis.AverageROAS) || math.IsInf(analysis.AverageROAS, 0) {
+		analysis.AverageROAS = 0
+	}
+	
+	// Sanitize top campaigns
+	for i := range analysis.TopCampaigns {
+		if math.IsNaN(analysis.TopCampaigns[i].CPC) || math.IsInf(analysis.TopCampaigns[i].CPC, 0) {
+			analysis.TopCampaigns[i].CPC = 0
+		}
+		if math.IsNaN(analysis.TopCampaigns[i].CPM) || math.IsInf(analysis.TopCampaigns[i].CPM, 0) {
+			analysis.TopCampaigns[i].CPM = 0
+		}
+		if math.IsNaN(analysis.TopCampaigns[i].CTR) || math.IsInf(analysis.TopCampaigns[i].CTR, 0) {
+			analysis.TopCampaigns[i].CTR = 0
+		}
+		if math.IsNaN(analysis.TopCampaigns[i].ROAS) || math.IsInf(analysis.TopCampaigns[i].ROAS, 0) {
+			analysis.TopCampaigns[i].ROAS = 0
+		}
+	}
+	
+	// Sanitize worst campaigns
+	for i := range analysis.WorstCampaigns {
+		if math.IsNaN(analysis.WorstCampaigns[i].CPC) || math.IsInf(analysis.WorstCampaigns[i].CPC, 0) {
+			analysis.WorstCampaigns[i].CPC = 0
+		}
+		if math.IsNaN(analysis.WorstCampaigns[i].CPM) || math.IsInf(analysis.WorstCampaigns[i].CPM, 0) {
+			analysis.WorstCampaigns[i].CPM = 0
+		}
+		if math.IsNaN(analysis.WorstCampaigns[i].CTR) || math.IsInf(analysis.WorstCampaigns[i].CTR, 0) {
+			analysis.WorstCampaigns[i].CTR = 0
+		}
+		if math.IsNaN(analysis.WorstCampaigns[i].ROAS) || math.IsInf(analysis.WorstCampaigns[i].ROAS, 0) {
+			analysis.WorstCampaigns[i].ROAS = 0
+		}
+	}
+	
+	// Sanitize audience performances if present
+	for i := range analysis.TopAudiences {
+		if math.IsNaN(analysis.TopAudiences[i].Performance.CPC) || math.IsInf(analysis.TopAudiences[i].Performance.CPC, 0) {
+			analysis.TopAudiences[i].Performance.CPC = 0
+		}
+		if math.IsNaN(analysis.TopAudiences[i].Performance.CPM) || math.IsInf(analysis.TopAudiences[i].Performance.CPM, 0) {
+			analysis.TopAudiences[i].Performance.CPM = 0
+		}
+		if math.IsNaN(analysis.TopAudiences[i].Performance.CTR) || math.IsInf(analysis.TopAudiences[i].Performance.CTR, 0) {
+			analysis.TopAudiences[i].Performance.CTR = 0
+		}
+		if math.IsNaN(analysis.TopAudiences[i].Performance.CVR) || math.IsInf(analysis.TopAudiences[i].Performance.CVR, 0) {
+			analysis.TopAudiences[i].Performance.CVR = 0
+		}
+		if math.IsNaN(analysis.TopAudiences[i].Performance.CPA) || math.IsInf(analysis.TopAudiences[i].Performance.CPA, 0) {
+			analysis.TopAudiences[i].Performance.CPA = 0
+		}
+	}
 }
 
 // AnalyzeAudiencePerformance analyzes audience segment performance
