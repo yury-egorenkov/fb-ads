@@ -54,6 +54,12 @@ func main() {
 		createCampaign(cfg)
 	case "update":
 		updateCampaign(cfg)
+	case "duplicate":
+		if len(os.Args) < 3 {
+			fmt.Println("Missing campaign ID. Use: fbads duplicate <campaign_id> [options]")
+			os.Exit(1)
+		}
+		duplicateCampaign(cfg, os.Args[2], os.Args[3:])
 	case "export":
 		if len(os.Args) < 3 {
 			fmt.Println("Missing campaign ID. Use: fbads export <campaign_id> [output_file]")
@@ -1418,6 +1424,169 @@ func loadParamsFromFile(filePath string) (url.Values, error) {
 	return params, nil
 }
 
+// duplicateCampaign handles duplicating a campaign with all its internals
+func duplicateCampaign(cfg *config.Config, campaignID string, args []string) {
+	// Parse flags
+	var (
+		campaignName  string
+		status        string = "PAUSED" // Default to PAUSED for safety
+		startDateStr  string
+		endDateStr    string
+		budgetFactor  float64 = 1.0 // Default to same budget
+		dryRun        bool
+	)
+
+	// Handle flags
+	for i := 0; i < len(args); i++ {
+		switch {
+		case strings.HasPrefix(args[i], "--name="):
+			campaignName = strings.TrimPrefix(args[i], "--name=")
+		case args[i] == "--name" && i+1 < len(args):
+			campaignName = args[i+1]
+			i++
+		case strings.HasPrefix(args[i], "--status="):
+			status = strings.TrimPrefix(args[i], "--status=")
+		case args[i] == "--status" && i+1 < len(args):
+			status = args[i+1]
+			i++
+		case strings.HasPrefix(args[i], "--start="):
+			startDateStr = strings.TrimPrefix(args[i], "--start=")
+		case args[i] == "--start" && i+1 < len(args):
+			startDateStr = args[i+1]
+			i++
+		case strings.HasPrefix(args[i], "--end="):
+			endDateStr = strings.TrimPrefix(args[i], "--end=")
+		case args[i] == "--end" && i+1 < len(args):
+			endDateStr = args[i+1]
+			i++
+		case strings.HasPrefix(args[i], "--budget-factor="):
+			fmt.Sscanf(strings.TrimPrefix(args[i], "--budget-factor="), "%f", &budgetFactor)
+		case args[i] == "--budget-factor" && i+1 < len(args):
+			fmt.Sscanf(args[i+1], "%f", &budgetFactor)
+			i++
+		case args[i] == "--dry-run" || args[i] == "-d":
+			dryRun = true
+		}
+	}
+
+	// Create auth client
+	authClient := auth.NewFacebookAuth(
+		cfg.AppID,
+		cfg.AppSecret,
+		cfg.AccessToken,
+		cfg.APIVersion,
+	)
+
+	// Create API client
+	client := api.NewClient(authClient, cfg.AccountID)
+
+	fmt.Printf("Fetching campaign details for ID: %s\n", campaignID)
+
+	// Get campaign details
+	details, err := client.GetCampaignDetails(campaignID)
+	if err != nil {
+		fmt.Printf("Error fetching campaign details: %v\n", err)
+		os.Exit(1)
+	}
+
+	// If no custom name provided, create a default name
+	if campaignName == "" {
+		campaignName = "Copy of " + details.Name
+	}
+
+	// Convert to a campaign configuration
+	campaignConfig := convertToConfig(details)
+	
+	// For duplication, we need to ensure we're not carrying over any IDs
+	// The Create function will assign new IDs
+
+	// Update the campaign config with the new parameters
+	campaignConfig.Name = campaignName
+	campaignConfig.Status = status
+
+	// Parse and update dates if provided
+	if startDateStr != "" {
+		startDate, err := time.Parse("2006-01-02", startDateStr)
+		if err != nil {
+			fmt.Printf("Invalid start date format: %v\n", err)
+			os.Exit(1)
+		}
+		campaignConfig.StartTime = startDate.Format(time.RFC3339)
+	}
+
+	if endDateStr != "" {
+		endDate, err := time.Parse("2006-01-02", endDateStr)
+		if err != nil {
+			fmt.Printf("Invalid end date format: %v\n", err)
+			os.Exit(1)
+		}
+		campaignConfig.EndTime = endDate.Format(time.RFC3339)
+	}
+
+	// Apply budget factor
+	if budgetFactor != 1.0 {
+		if campaignConfig.DailyBudget > 0 {
+			campaignConfig.DailyBudget = campaignConfig.DailyBudget * budgetFactor
+		}
+		if campaignConfig.LifetimeBudget > 0 {
+			campaignConfig.LifetimeBudget = campaignConfig.LifetimeBudget * budgetFactor
+		}
+	}
+
+	// Clear any ID fields from the AdSets and Ads to ensure new ones are created
+	for i := range campaignConfig.AdSets {
+		// Update ad set names to indicate they're copies
+		if !strings.HasPrefix(campaignConfig.AdSets[i].Name, "Copy of ") {
+			campaignConfig.AdSets[i].Name = "Copy of " + campaignConfig.AdSets[i].Name
+		}
+		// Set the status to match the campaign
+		campaignConfig.AdSets[i].Status = status
+	}
+
+	for i := range campaignConfig.Ads {
+		// Update ad names to indicate they're copies
+		if !strings.HasPrefix(campaignConfig.Ads[i].Name, "Copy of ") {
+			campaignConfig.Ads[i].Name = "Copy of " + campaignConfig.Ads[i].Name
+		}
+		// Set the status to match the campaign
+		campaignConfig.Ads[i].Status = status
+	}
+
+	// Print configuration summary
+	fmt.Println("\nDuplicated Campaign Configuration Summary:")
+	printCampaignConfigSummary(campaignConfig)
+
+	// If dry run, just print configuration summary and exit
+	if dryRun {
+		fmt.Println("\nDry run: No campaigns will be created.")
+		return
+	}
+
+	// Ask for confirmation
+	fmt.Print("\nDo you want to create this duplicated campaign? (y/n): ")
+	var confirm string
+	fmt.Scanln(&confirm)
+
+	if confirm != "y" && confirm != "Y" && confirm != "yes" && confirm != "Yes" {
+		fmt.Println("Campaign duplication cancelled.")
+		return
+	}
+
+	// Create campaign creator
+	creator := internal_campaign.NewCampaignCreator(authClient, cfg.AccountID)
+
+	fmt.Println("Creating duplicated campaign...")
+
+	// Create the campaign
+	err = creator.CreateFromConfig(campaignConfig)
+	if err != nil {
+		fmt.Printf("Error creating duplicated campaign: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Campaign duplicated successfully!")
+}
+
 func printUsage() {
 	fmt.Println("Usage: fbads <command> [arguments]")
 	fmt.Println("\nAvailable commands:")
@@ -1438,6 +1607,14 @@ func printUsage() {
 	fmt.Println("    --lifetime-budget=BUDGET  New lifetime budget (e.g., 1000.00)")
 	fmt.Println("    --bid-strategy=STRATEGY   New bid strategy (e.g., LOWEST_COST_WITHOUT_CAP)")
 	fmt.Println("    --file=FILE            JSON file with update parameters")
+	fmt.Println("")
+	fmt.Println("  duplicate <campaign_id>  Duplicate an existing campaign with all its internals")
+	fmt.Println("    --name=NAME            Name for the duplicated campaign (defaults to 'Copy of [original]')")
+	fmt.Println("    --status=STATUS        Status for the duplicated campaign (default: PAUSED)")
+	fmt.Println("    --start=YYYY-MM-DD     New start date for the duplicated campaign")
+	fmt.Println("    --end=YYYY-MM-DD       New end date for the duplicated campaign")
+	fmt.Println("    --budget-factor=X      Multiply budget by factor X (e.g., 1.5)")
+	fmt.Println("    --dry-run, -d          Preview without creating the duplicate")
 	fmt.Println("")
 	fmt.Println("  export <campaign_id> [output_file]")
 	fmt.Println("                           Export campaign to configuration file")

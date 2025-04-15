@@ -31,6 +31,7 @@
 - [x] Implement creative combinations (text + image) management
 - [x] Add campaign update functionality to modify existing campaigns
 - [x] Implement status change operations (pause/resume/archive)
+- [x] Duplicate campaign with all internals by id
 - [ ] Create bulk update capability for managing multiple campaigns
 - [ ] Develop scheduling system for automated campaign updates
 
