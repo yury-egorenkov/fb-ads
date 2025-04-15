@@ -1344,11 +1344,20 @@ func updateCampaign(cfg *config.Config) {
 		params.Set("bid_strategy", bidStrategy)
 	}
 
+	// Verify the campaign exists before updating
+	fmt.Printf("Verifying campaign %s exists...\n", campaignID)
+	_, verifyErr := client.GetCampaignDetails(campaignID)
+	if verifyErr != nil {
+		fmt.Printf("Error: Campaign not found or cannot be accessed: %v\n", verifyErr)
+		fmt.Println("Please check that the campaign ID is correct and you have permission to access it.")
+		os.Exit(1)
+	}
+
 	// Make the API call to update the campaign
 	fmt.Printf("Updating campaign %s with parameters: %v\n", campaignID, params)
-	err := client.UpdateCampaign(campaignID, params)
-	if err != nil {
-		fmt.Printf("Error updating campaign: %v\n", err)
+	updateErr := client.UpdateCampaign(campaignID, params)
+	if updateErr != nil {
+		fmt.Printf("Error updating campaign: %v\n", updateErr)
 		os.Exit(1)
 	}
 

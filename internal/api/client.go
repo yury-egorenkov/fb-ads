@@ -660,7 +660,7 @@ func getMockCampaigns() []models.Campaign {
 // UpdateCampaign updates an existing campaign with the provided parameters
 func (c *Client) UpdateCampaign(campaignID string, params url.Values) error {
 	// Create the endpoint URL with the campaign ID
-	endpoint := fmt.Sprintf("%s/act_%s/campaigns/%s", c.auth.GetAPIBaseURL(), c.accountID, campaignID)
+	endpoint := fmt.Sprintf("%s/%s", c.auth.GetAPIBaseURL(), campaignID)
 
 	// Create the request
 	req, err := http.NewRequest("POST", endpoint, strings.NewReader(params.Encode()))
