@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/user/fb-ads/internal/api"
 	"github.com/user/fb-ads/pkg/auth"
 )
 
@@ -181,15 +182,15 @@ func (d *Deactivator) CheckCampaigns() ([]DeactivationEvent, error) {
 	return events, nil
 }
 
-// DeactivateCampaign deactivates a campaign
+// DeactivateCampaign deactivates a campaign by setting its status to PAUSED
 func (d *Deactivator) DeactivateCampaign(campaignID string) error {
 	params := url.Values{}
 	params.Set("status", "PAUSED")
 	
-	// Using campaignID directly in the placeholder for now
-	// endpoint := fmt.Sprintf("%s", campaignID)
+	// Create a temporary API client for making the request
+	client := api.NewClient(d.auth, d.accountID)
 	
-	// TODO: Implement actual API call to deactivate campaign
+	// Make the API call to update the campaign
 	log.Printf("Deactivating campaign %s", campaignID)
-	return nil
+	return client.UpdateCampaign(campaignID, params)
 }

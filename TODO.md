@@ -29,8 +29,8 @@
 - [x] Create CPM adjustment functionality based on conversion data
 - [x] Build campaign deactivation system for underperforming campaigns
 - [x] Implement creative combinations (text + image) management
-- [ ] Add campaign update functionality to modify existing campaigns
-- [ ] Implement status change operations (pause/resume/archive)
+- [x] Add campaign update functionality to modify existing campaigns
+- [x] Implement status change operations (pause/resume/archive)
 - [ ] Create bulk update capability for managing multiple campaigns
 - [ ] Develop scheduling system for automated campaign updates
 
