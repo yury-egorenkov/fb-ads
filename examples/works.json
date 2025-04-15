@@ -1,0 +1,105 @@
+{
+  "name": "Post: \"Even a great career can collapse without the way...\"",
+  "status": "PAUSED",
+  "objective": "OUTCOME_TRAFFIC",
+  "buying_type": "AUCTION",
+  "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
+  "lifetime_budget": 20,
+  "start_time": "2025-04-08T12:03:26+01:00",
+  "end_time": "2025-04-17T12:03:26+01:00",
+  "adsets": [
+    {
+      "name": "Post: \"Even a great career can collapse without the way...\"",
+      "status": "ACTIVE",
+      "targeting": {
+        "age_max": 65,
+        "age_min": 25,
+        "age_range": [
+          25,
+          55
+        ],
+        "audience_network_positions": [
+          "classic",
+          "rewarded_video"
+        ],
+        "facebook_positions": [
+          "feed",
+          "biz_disco_feed",
+          "facebook_reels",
+          "facebook_reels_overlay",
+          "profile_feed",
+          "right_hand_column",
+          "video_feeds",
+          "instream_video",
+          "marketplace",
+          "story",
+          "search"
+        ],
+        "flexible_spec": [
+          {
+            "work_positions": [
+              {
+                "id": "108210175866280",
+                "name": "Psychotherapy"
+              }
+            ]
+          }
+        ],
+        "genders": [
+          2
+        ],
+        "geo_locations": {
+          "countries": [
+            "US"
+          ],
+          "location_types": [
+            "home",
+            "recent"
+          ]
+        },
+        "instagram_positions": [
+          "stream",
+          "ig_search",
+          "profile_reels",
+          "story",
+          "explore",
+          "reels",
+          "explore_home",
+          "profile_feed"
+        ],
+        "messenger_positions": [
+          "messenger_home",
+          "story"
+        ],
+        "publisher_platforms": [
+          "facebook",
+          "instagram",
+          "audience_network",
+          "messenger"
+        ],
+        "targeting_automation": {
+          "advantage_audience": 1
+        }
+      },
+      "optimization_goal": "LANDING_PAGE_VIEWS",
+      "billing_event": "IMPRESSIONS",
+      "bid_amount": 0,
+      "start_time": "2025-04-08T12:03:26+01:00",
+      "end_time": "2025-04-17T12:03:26+01:00"
+    }
+  ],
+  "ads": [
+    {
+      "name": "Post: \"Even a great career can collapse without the way...\"",
+      "status": "ACTIVE",
+      "creative": {
+        "name": "corespirit.com",
+        "title": "Learn How to Attract More Clients",
+        "body": "Even a great career can collapse without the way to get clients. Pro consultants don't struggle with how to consult or write down their offer, because, you know, they are experts. They all have just one toughest challenge. How to get clients?\n\nThere's an huge amount of material on this topic. Everyone is selling funnels, guides, big-ticket strategies, mid-range solutions — the variety is endless. Everything seems clear, but to make it work specifically for you, you'd have to learn an entirely new profession. And that's always time-consuming and expensive. If you don't learn it — nothing will happen. All you'll be left with is wasted time and money down the drain.\n\nYou can be the most talented and brilliant professional, but if you haven't learned how to attract clients — meaning traffic — you don't have a business. Not any kind of business. Ever. Don't build illusions.\n\nIt's both hard to figure out and impossible to ignore. So what do you do? What options are there?\n\nThe question of how to consistently attract clients always boils down to two things: how to craft the right offer and where to source affordable traffic.\n\nFor professionals, crafting their offer isn't difficult because they generally understand their audience and its needs — after all, they've studied and mastered their profession. But sourcing traffic? That's usually where the biggest challenges arise.\n\nIn reality, it's not that complicated. There are only a few main options, and you don't need advanced degrees to understand them. However, the problem is that each solution has its pros and cons, and the critical difficulty lies in figuring out where to start — specifically for you.\n\nChoosing the wrong starting point always means wasted time and money. Some solutions might not suit your situation at all because of your experience level or familiarity with certain technologies. They could simply be too complicated and inefficient for you. That's the key issue.\n\nLet's say you want to learn more about each of these solutions so you can better understand where to start. Because you know the main goal is to start quickly, effectively, without hassle, without significant risks, and to start getting real clients and real money as soon as possible.\n\nThis is exactly what you need! You may be a fantastic consultant, but to get started, you need to understand the market and figure out what to do and how to do it. This information is crucial for you right now.\n\n\u003e 💡 What will you choose?\nLearn the main ways to attract clients in 20 minutes\nor\nSpend 2-3 years trying to figure out what still works and what doesn't\n\nAfter reading, you'll immediately have a better understanding of the available options, their strengths and weaknesses, and where it's best for you to start. Right now, your challenge is a lack of direction.\n\nFollow the link — no registration required, nothing to fill out. Just pick your situation and read.\n\nLearn more\n👉 https://corespirit.com/funnels/pract?utm_source=fb\u0026utm_medium=social\u0026utm_campaign=leads\u0026utm_term=01-1",
+        "call_to_action": "LEARN_MORE",
+        "page_id": "494926230370749",
+        "link_url": "https://corespirit.com/funnels/pract?utm_source=fb&utm_medium=social&utm_campaign=leads&utm_term=01-1"
+      }
+    }
+  ]
+}

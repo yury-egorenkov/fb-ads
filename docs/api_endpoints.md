@@ -8,6 +8,132 @@ All API requests require authentication with an access token. The Facebook Ads M
 
 Base URL: `https://graph.facebook.com/{api-version}/`
 
+## Audience Analysis Endpoints
+
+### Search Audience Interests
+
+Searches for audience interest targeting options.
+
+- **Endpoint**: `search`
+- **Method**: GET
+- **Parameters**:
+  - `type`: Set to "adinterest" for interest targeting
+  - `q`: Search query
+  - `limit`: Maximum number of results to return (default: 25)
+
+**Example Response**:
+```json
+{
+  "data": [
+    {
+      "id": "6003107902433",
+      "name": "Online shopping",
+      "description": "People interested in Online shopping",
+      "type": "interest",
+      "audience_size": 910000000
+    }
+  ],
+  "paging": {
+    "cursors": {
+      "before": "cursor_before",
+      "after": "cursor_after"
+    }
+  }
+}
+```
+
+### Search Audience Behaviors
+
+Searches for audience behavior targeting options.
+
+- **Endpoint**: `search`
+- **Method**: GET
+- **Parameters**:
+  - `type`: Set to "adsquizzedbehavior" for behavior targeting
+  - `q`: Search query
+  - `limit`: Maximum number of results to return (default: 25)
+
+**Example Response**:
+```json
+{
+  "data": [
+    {
+      "id": "6002714895372",
+      "name": "Engaged Shoppers",
+      "description": "People who have clicked on the Shop Now button in the past week",
+      "path": ["Shopping and fashion", "Shopping behaviors"],
+      "audience_size": 235000000
+    }
+  ],
+  "paging": {
+    "cursors": {
+      "before": "cursor_before",
+      "after": "cursor_after"
+    }
+  }
+}
+```
+
+### Get Audience Statistics
+
+Retrieves performance statistics for audience segments.
+
+- **Endpoint**: `/{campaign_id}/insights`
+- **Method**: GET
+- **Parameters**:
+  - `time_range`: JSON object with `since` and `until` date filters
+  - `breakdowns`: Set to "age,gender,country" for demographic breakdowns
+  - `fields`: Comma-separated metrics (impressions,clicks,conversions,spend,cpm,ctr)
+
+**Example Response**:
+```json
+{
+  "data": [
+    {
+      "age": "25-34",
+      "gender": "female",
+      "country": "US",
+      "impressions": "12500",
+      "clicks": "350",
+      "conversions": "18",
+      "spend": "50.00",
+      "cpm": "4.00",
+      "ctr": "2.80"
+    }
+  ],
+  "paging": {
+    "cursors": {
+      "before": "cursor_before",
+      "after": "cursor_after"
+    }
+  }
+}
+```
+
+### Get Audience Size Estimates
+
+Estimates the size of an audience based on targeting parameters.
+
+- **Endpoint**: `/act_{ad_account_id}/delivery_estimate`
+- **Method**: GET
+- **Parameters**:
+  - `targeting_spec`: JSON object with targeting parameters
+  - `optimization_goal`: Optimization goal (REACH, LINK_CLICKS, etc.)
+  - `fields`: Set to "audience_size_estimate,estimate_dau"
+
+**Example Response**:
+```json
+{
+  "data": [
+    {
+      "audience_size_estimate": 15000000,
+      "estimate_dau": 12000000,
+      "estimate_ready": true
+    }
+  ]
+}
+```
+
 ## Campaigns
 
 ### List Campaigns

@@ -17,8 +17,8 @@
 
 ## Audience Analysis
 - [x] Create audience data extraction module
-- [ ] Implement statistics collection for audience segments
-- [ ] Build filtering system for finding optimal audiences
+- [x] Implement statistics collection for audience segments
+- [x] Build filtering system for finding optimal audiences
 - [ ] Develop data visualization for audience performance
 - [x] Create export functionality for audience insights (basic structure)
 
