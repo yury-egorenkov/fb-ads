@@ -2,13 +2,31 @@
 
 A command line interface tool for managing Facebook Ads campaigns, built with Go.
 
+A robust, feature-rich command-line interface for Facebook Ads management built with Go. Provides campaign creation, duplication, optimization, and
+  audience analysis in a streamlined terminal experience.
+
 ## Features
 
-- List all Facebook advertising campaigns
+- Campaign management (create, update, duplicate, export)
+- List all ads campaigns
 - Create campaigns from JSON configuration files
-- Analyze audience data for better targeting
+- Audience targeting and performance analytics for better targeting
 - Manage campaigns with minimal test budgets
+- Custom reporting and insights
 - Optimize campaigns based on performance
+- Campaign optimization suggestions
+- Web dashboard for visualizing campaign performance
+
+## Technical Details
+
+- Built with Go for high performance and cross-platform compatibility
+- Interacts directly with Facebook Marketing API
+- Clean, modular architecture with separation of concerns
+- JSON configuration for campaign templates
+- Comprehensive error handling and input validation
+
+Perfect for marketing teams and agencies who need to manage Facebook ad campaigns efficiently through automation and command-line workflows. Supports
+all major Facebook ad types, targeting options, and budget management strategies
 
 ## Installation
 

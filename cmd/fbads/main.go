@@ -1526,7 +1526,19 @@ func duplicateCampaign(cfg *config.Config, campaignID string, args []string) {
 		campaignConfig.EndTime = endDate.Format(time.RFC3339)
 	}
 
-	// Apply budget factor
+	// Fix budget values: when retrieved from Facebook, budgets are in cents
+	// but the CampaignConfig expects dollars for display
+	if campaignConfig.DailyBudget > 0 {
+		// Convert from cents to dollars (e.g., 2000 cents -> $20.00)
+		campaignConfig.DailyBudget = campaignConfig.DailyBudget / 100
+	}
+	
+	if campaignConfig.LifetimeBudget > 0 {
+		// Convert from cents to dollars (e.g., 2000 cents -> $20.00)
+		campaignConfig.LifetimeBudget = campaignConfig.LifetimeBudget / 100
+	}
+	
+	// Apply budget factor after the conversion
 	if budgetFactor != 1.0 {
 		if campaignConfig.DailyBudget > 0 {
 			campaignConfig.DailyBudget = campaignConfig.DailyBudget * budgetFactor

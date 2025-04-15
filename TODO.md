@@ -32,6 +32,8 @@
 - [x] Add campaign update functionality to modify existing campaigns
 - [x] Implement status change operations (pause/resume/archive)
 - [x] Duplicate campaign with all internals by id
+- [x] On duplicate the budget is 100 times higher than it should be.
+- [ ] Create campaign to promote a post from the page
 - [ ] Create bulk update capability for managing multiple campaigns
 - [ ] Develop scheduling system for automated campaign updates
 

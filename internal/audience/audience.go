@@ -151,11 +151,12 @@ func (a *AudienceAnalyzer) CollectSegmentStatistics(campaignID string, days int)
 	startDate := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
 	params.Set("time_range", fmt.Sprintf(`{"since":"%s","until":"%s"}`, startDate, endDate))
 	
-	// Request breakdown by targeting options
-	params.Set("breakdowns", "age,gender,country")
+	// Try a simplified approach with a single demographic breakdown
+	// This avoids potential conflicts with action_type that cause API errors
+	params.Set("breakdowns", "age")
 	
-	// Request relevant metrics
-	params.Set("fields", "impressions,clicks,conversions,spend,cpm,ctr")
+	// Explicitly request only standard metrics that don't require action_type
+	params.Set("fields", "impressions,clicks,spend,cpm,ctr")
 	
 	req, err := a.auth.GetAuthenticatedRequest(endpoint, params)
 	if err != nil {

@@ -120,6 +120,8 @@ When you duplicate a campaign:
   your original campaign has valid link URLs for all ads
 - **Unsupported Image URL**: Facebook no longer supports specifying images via URL directly; instead, 
   upload images via the Facebook API first and use the resulting image IDs
+- **Budget Units**: The duplication tool automatically handles unit conversion between the API (which uses cents)
+  and the configuration display (which uses dollars). The budget you see in the summary is in dollars.
 
 ### Getting Help
 
