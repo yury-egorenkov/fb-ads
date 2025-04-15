@@ -59,9 +59,21 @@ Available commands:
 
 - `list` - List all campaigns
 - `create` - Create a new campaign from configuration
+- `update` - Update an existing campaign 
+- `duplicate` - Duplicate a campaign with all its internals
+- `export` - Export campaign to configuration file
 - `audience` - Analyze audience data
+- `report` - Generate performance reports
+- `dashboard` - Launch the web dashboard
+- `pages` - List Facebook Pages available for the API token
 - `config` - Configure the application
 - `help` - Show help information
+
+See the docs directory for detailed documentation on each command:
+
+- [Duplicating Campaigns](docs/duplicate_campaign.md) - Detailed guide on cloning campaigns
+- [Creating Campaigns](docs/create.md) - How to create campaigns from configuration
+- [API Endpoints](docs/api_endpoints.md) - Information on the Facebook API endpoints used
 
 ## Examples
 
@@ -74,13 +86,31 @@ fbads list
 ### Creating a Campaign
 
 ```
-fbads create -f campaign_config.json
+fbads create campaign_config.json
+```
+
+### Duplicating a Campaign
+
+```
+fbads duplicate 123456789 --name="New Campaign" --budget-factor=1.5
+```
+
+### Updating a Campaign
+
+```
+fbads update --id=123456789 --status=PAUSED --name="Updated Campaign Name"
 ```
 
 ### Analyzing Audience Data
 
 ```
-fbads audience -export audience_data.json
+fbads audience search "hiking"
+```
+
+### Generating a Report
+
+```
+fbads report custom 2025-01-01 2025-02-01
 ```
 
 ## License
