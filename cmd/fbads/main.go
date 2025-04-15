@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,6 +52,8 @@ func main() {
 		listCampaigns(cfg)
 	case "create":
 		createCampaign(cfg)
+	case "update":
+		updateCampaign(cfg)
 	case "export":
 		if len(os.Args) < 3 {
 			fmt.Println("Missing campaign ID. Use: fbads export <campaign_id> [output_file]")
@@ -697,7 +700,7 @@ func filterAudience(analyzer *audience.AudienceAnalyzer, args []string) {
 
 	// For now, we'll just log what we would do in a full implementation
 	fmt.Printf("Loading audience segments for '%s'...\n", query)
-	
+
 	// In a real implementation, we would search for both interests and behaviors
 	// For example:
 	// interests, err := analyzer.GetInterests(query)
@@ -705,7 +708,7 @@ func filterAudience(analyzer *audience.AudienceAnalyzer, args []string) {
 	//     fmt.Printf("Error searching for interests: %v\n", err)
 	//     os.Exit(1)
 	// }
-	// 
+	//
 	// behaviors, err := analyzer.GetBehaviors(query)
 	// if err != nil {
 	//     fmt.Printf("Error searching for behaviors: %v\n", err)
@@ -817,7 +820,7 @@ func generateReport(cfg *config.Config, reportType string, args []string) {
 
 	// Create metrics collector
 	metricsCollector := api.NewMetricsCollector(authClient, cfg.AccountID)
-	
+
 	// Create audience analyzer
 	audienceAnalyzer := audience.NewAudienceAnalyzer(authClient, cfg.AccountID)
 
@@ -922,7 +925,7 @@ func startDashboard(cfg *config.Config) {
 
 	// Create metrics collector
 	metricsCollector := api.NewMetricsCollector(authClient, cfg.AccountID)
-	
+
 	// Create audience analyzer
 	audienceAnalyzer := audience.NewAudienceAnalyzer(authClient, cfg.AccountID)
 
@@ -1199,18 +1202,235 @@ func convertToConfig(details *models.CampaignDetails) *models.CampaignConfig {
 	return config
 }
 
+// updateCampaign handles updating an existing campaign
+func updateCampaign(cfg *config.Config) {
+	// Parse flags
+	var (
+		campaignID     string
+		status         string
+		name           string
+		dailyBudget    float64
+		lifetimeBudget float64
+		bidStrategy    string
+		jsonFile       string
+	)
+
+	// Skip the first two args (fbads update)
+	args := os.Args[2:]
+
+	// Handle flags
+	for i := 0; i < len(args); i++ {
+		switch {
+		case strings.HasPrefix(args[i], "--id="):
+			campaignID = strings.TrimPrefix(args[i], "--id=")
+		case args[i] == "--id" && i+1 < len(args):
+			campaignID = args[i+1]
+			i++
+		case strings.HasPrefix(args[i], "--status="):
+			status = strings.TrimPrefix(args[i], "--status=")
+		case args[i] == "--status" && i+1 < len(args):
+			status = args[i+1]
+			i++
+		case strings.HasPrefix(args[i], "--name="):
+			name = strings.TrimPrefix(args[i], "--name=")
+		case args[i] == "--name" && i+1 < len(args):
+			name = args[i+1]
+			i++
+		case strings.HasPrefix(args[i], "--daily-budget="):
+			fmt.Sscanf(strings.TrimPrefix(args[i], "--daily-budget="), "%f", &dailyBudget)
+		case args[i] == "--daily-budget" && i+1 < len(args):
+			fmt.Sscanf(args[i+1], "%f", &dailyBudget)
+			i++
+		case strings.HasPrefix(args[i], "--lifetime-budget="):
+			fmt.Sscanf(strings.TrimPrefix(args[i], "--lifetime-budget="), "%f", &lifetimeBudget)
+		case args[i] == "--lifetime-budget" && i+1 < len(args):
+			fmt.Sscanf(args[i+1], "%f", &lifetimeBudget)
+			i++
+		case strings.HasPrefix(args[i], "--bid-strategy="):
+			bidStrategy = strings.TrimPrefix(args[i], "--bid-strategy=")
+		case args[i] == "--bid-strategy" && i+1 < len(args):
+			bidStrategy = args[i+1]
+			i++
+		case strings.HasPrefix(args[i], "--file="):
+			jsonFile = strings.TrimPrefix(args[i], "--file=")
+		case args[i] == "--file" && i+1 < len(args):
+			jsonFile = args[i+1]
+			i++
+		}
+	}
+
+	// Check if at least campaign ID is provided
+	if campaignID == "" {
+		fmt.Println("Error: Campaign ID is required")
+		fmt.Println("Usage: fbads update --id=CAMPAIGN_ID [options]")
+		fmt.Println("\nOptions:")
+		fmt.Println("  --id=ID                   Campaign ID to update (required)")
+		fmt.Println("  --status=STATUS           New status (ACTIVE, PAUSED, ARCHIVED)")
+		fmt.Println("  --name=NAME               New campaign name")
+		fmt.Println("  --daily-budget=BUDGET     New daily budget (e.g., 50.00)")
+		fmt.Println("  --lifetime-budget=BUDGET  New lifetime budget (e.g., 1000.00)")
+		fmt.Println("  --bid-strategy=STRATEGY   New bid strategy (e.g., LOWEST_COST_WITHOUT_CAP)")
+		fmt.Println("  --file=FILE               JSON file with update parameters")
+		os.Exit(1)
+	}
+
+	// Check if at least one update parameter is provided
+	if status == "" && name == "" && dailyBudget == 0 && lifetimeBudget == 0 &&
+		bidStrategy == "" && jsonFile == "" {
+		fmt.Println("Error: At least one update parameter must be provided")
+		fmt.Println("Usage: fbads update --id=CAMPAIGN_ID [options]")
+		os.Exit(1)
+	}
+
+	// Create the Facebook auth object
+	authClient := auth.NewFacebookAuth(
+		cfg.AppID,
+		cfg.AppSecret,
+		cfg.AccessToken,
+		cfg.APIVersion,
+	)
+
+	// Create API client
+	client := api.NewClient(authClient, cfg.AccountID)
+
+	// Build the update parameters
+	params := url.Values{}
+
+	// If a JSON file is provided, load update parameters from it
+	if jsonFile != "" {
+		fileParams, err := loadParamsFromFile(jsonFile)
+		if err != nil {
+			fmt.Printf("Error loading parameters from file: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Merge file parameters with params
+		for key, values := range fileParams {
+			for _, value := range values {
+				params.Add(key, value)
+			}
+		}
+	}
+
+	// Add command-line parameters (these override file parameters)
+	if status != "" {
+		validStatuses := map[string]bool{"ACTIVE": true, "PAUSED": true, "ARCHIVED": true}
+		if !validStatuses[strings.ToUpper(status)] {
+			fmt.Printf("Invalid status: %s. Must be one of: ACTIVE, PAUSED, ARCHIVED\n", status)
+			os.Exit(1)
+		}
+		params.Set("status", strings.ToUpper(status))
+	}
+
+	if name != "" {
+		params.Set("name", name)
+	}
+
+	if dailyBudget > 0 {
+		// Convert to cents as required by the API
+		params.Set("daily_budget", fmt.Sprintf("%d", int(dailyBudget*100)))
+	}
+
+	if lifetimeBudget > 0 {
+		// Convert to cents as required by the API
+		params.Set("lifetime_budget", fmt.Sprintf("%d", int(lifetimeBudget*100)))
+	}
+
+	if bidStrategy != "" {
+		params.Set("bid_strategy", bidStrategy)
+	}
+
+	// Make the API call to update the campaign
+	fmt.Printf("Updating campaign %s with parameters: %v\n", campaignID, params)
+	err := client.UpdateCampaign(campaignID, params)
+	if err != nil {
+		fmt.Printf("Error updating campaign: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Campaign %s updated successfully\n", campaignID)
+}
+
+// loadParamsFromFile loads campaign update parameters from a JSON file
+func loadParamsFromFile(filePath string) (url.Values, error) {
+	params := url.Values{}
+
+	// Read the file
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return params, fmt.Errorf("error reading file: %w", err)
+	}
+
+	// Parse JSON
+	var updateConfig struct {
+		Status         string  `json:"status,omitempty"`
+		Name           string  `json:"name,omitempty"`
+		DailyBudget    float64 `json:"daily_budget,omitempty"`
+		LifetimeBudget float64 `json:"lifetime_budget,omitempty"`
+		BidStrategy    string  `json:"bid_strategy,omitempty"`
+	}
+
+	if err := json.Unmarshal(data, &updateConfig); err != nil {
+		return params, fmt.Errorf("error parsing JSON: %w", err)
+	}
+
+	// Add parameters
+	if updateConfig.Status != "" {
+		validStatuses := map[string]bool{"ACTIVE": true, "PAUSED": true, "ARCHIVED": true}
+		status := strings.ToUpper(updateConfig.Status)
+		if !validStatuses[status] {
+			return params, fmt.Errorf("invalid status: %s. Must be one of: ACTIVE, PAUSED, ARCHIVED", status)
+		}
+		params.Set("status", status)
+	}
+
+	if updateConfig.Name != "" {
+		params.Set("name", updateConfig.Name)
+	}
+
+	if updateConfig.DailyBudget > 0 {
+		// Convert to cents as required by the API
+		params.Set("daily_budget", fmt.Sprintf("%d", int(updateConfig.DailyBudget*100)))
+	}
+
+	if updateConfig.LifetimeBudget > 0 {
+		// Convert to cents as required by the API
+		params.Set("lifetime_budget", fmt.Sprintf("%d", int(updateConfig.LifetimeBudget*100)))
+	}
+
+	if updateConfig.BidStrategy != "" {
+		params.Set("bid_strategy", updateConfig.BidStrategy)
+	}
+
+	return params, nil
+}
+
 func printUsage() {
 	fmt.Println("Usage: fbads <command> [arguments]")
 	fmt.Println("\nAvailable commands:")
+	fmt.Println("")
 	fmt.Println("  list [options]           List all campaigns")
 	fmt.Println("    --limit, -l <num>      Limit the number of results (default: 10)")
 	fmt.Println("    --status, -s <status>  Filter by status (ACTIVE, PAUSED, etc.)")
 	fmt.Println("    --format, -f <format>  Output format (table, json, csv)")
+	fmt.Println("")
 	fmt.Println("  create <config_file>     Create a new campaign from configuration")
 	fmt.Println("    --dry-run, -d          Preview the campaign without creating it")
+	fmt.Println("")
+	fmt.Println("  update                   Update an existing campaign")
+	fmt.Println("    --id=ID                Campaign ID to update (required)")
+	fmt.Println("    --status=STATUS        New status (ACTIVE, PAUSED, ARCHIVED)")
+	fmt.Println("    --name=NAME            New campaign name")
+	fmt.Println("    --daily-budget=BUDGET  New daily budget (e.g., 50.00)")
+	fmt.Println("    --lifetime-budget=BUDGET  New lifetime budget (e.g., 1000.00)")
+	fmt.Println("    --bid-strategy=STRATEGY   New bid strategy (e.g., LOWEST_COST_WITHOUT_CAP)")
+	fmt.Println("    --file=FILE            JSON file with update parameters")
+	fmt.Println("")
 	fmt.Println("  export <campaign_id> [output_file]")
 	fmt.Println("                           Export campaign to configuration file")
+	fmt.Println("")
 	fmt.Println("  pages                    List Facebook Pages available for the API token")
+	fmt.Println("")
 	fmt.Println("  audience <subcommand> [args]")
 	fmt.Println("                           Audience targeting and analysis commands")
 	fmt.Println("    - search <query>       Search for audience interests or behaviors")
@@ -1226,12 +1446,17 @@ func printUsage() {
 	fmt.Println("    - stats                Collect segment statistics")
 	fmt.Println("      --campaign, -c <id>  Campaign ID to analyze")
 	fmt.Println("      --days, -d <days>    Number of days to analyze (default: 30)")
+	fmt.Println("")
 	fmt.Println("  report <type> [args]     Generate performance reports")
 	fmt.Println("    - daily                Daily report for yesterday")
 	fmt.Println("    - weekly               Weekly report for the last 7 days")
 	fmt.Println("    - custom <start> <end> Custom date range report (YYYY-MM-DD format)")
+	fmt.Println("")
 	fmt.Println("  optimize                 Optimize campaigns based on performance")
+	fmt.Println("")
 	fmt.Println("  dashboard [port]         Start web dashboard (default port: 8080)")
+	fmt.Println("")
 	fmt.Println("  config                   Configure the application")
+	fmt.Println("")
 	fmt.Println("  help                     Show help information")
 }

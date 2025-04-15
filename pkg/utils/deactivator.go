@@ -2,12 +2,13 @@ package utils
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
-	"github.com/user/fb-ads/internal/api"
 	"github.com/user/fb-ads/pkg/auth"
 )
 
@@ -187,10 +188,34 @@ func (d *Deactivator) DeactivateCampaign(campaignID string) error {
 	params := url.Values{}
 	params.Set("status", "PAUSED")
 	
-	// Create a temporary API client for making the request
-	client := api.NewClient(d.auth, d.accountID)
-	
-	// Make the API call to update the campaign
+	// Create the endpoint URL with the campaign ID
+	endpoint := fmt.Sprintf("%s/act_%s/campaigns/%s", d.auth.GetAPIBaseURL(), d.accountID, campaignID)
+
+	// Create the request
+	req, err := http.NewRequest("POST", endpoint, strings.NewReader(params.Encode()))
+	if err != nil {
+		return fmt.Errorf("error creating request: %w", err)
+	}
+
+	// Set the content type header
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	// Add authentication
+	d.auth.AuthenticateRequest(req)
+
+	// Send the request
 	log.Printf("Deactivating campaign %s", campaignID)
-	return client.UpdateCampaign(campaignID, params)
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("error executing request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check for errors
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("API error: %s - %s", resp.Status, string(body))
+	}
+	
+	return nil
 }

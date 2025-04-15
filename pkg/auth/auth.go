@@ -35,9 +35,14 @@ func (fa *FacebookAuth) ValidateToken() (bool, error) {
 	return true, nil
 }
 
+// GetAPIBaseURL returns the base URL for the Facebook API
+func (fa *FacebookAuth) GetAPIBaseURL() string {
+	return fmt.Sprintf("https://graph.facebook.com/%s", fa.APIVersion)
+}
+
 // GetAuthenticatedRequest returns an http request with authentication
 func (fa *FacebookAuth) GetAuthenticatedRequest(endpoint string, params url.Values) (*http.Request, error) {
-	baseURL := fmt.Sprintf("https://graph.facebook.com/%s/%s", fa.APIVersion, endpoint)
+	baseURL := fmt.Sprintf("%s/%s", fa.GetAPIBaseURL(), endpoint)
 	
 	if params == nil {
 		params = url.Values{}
@@ -52,4 +57,12 @@ func (fa *FacebookAuth) GetAuthenticatedRequest(endpoint string, params url.Valu
 	
 	req.URL.RawQuery = params.Encode()
 	return req, nil
+}
+
+// AuthenticateRequest adds authentication to an existing HTTP request
+func (fa *FacebookAuth) AuthenticateRequest(req *http.Request) {
+	// Add access token to query parameters
+	q := req.URL.Query()
+	q.Set("access_token", fa.AccessToken)
+	req.URL.RawQuery = q.Encode()
 }
