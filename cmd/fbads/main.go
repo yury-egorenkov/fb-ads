@@ -575,20 +575,52 @@ func analyzeAudience(cfg *config.Config) {
 // searchAudience handles searching for audience segments
 func searchAudience(analyzer *audience.AudienceAnalyzer, args []string) {
 	if len(args) < 1 {
-		fmt.Println("Missing search query. Use: fbads audience search <query> [--type TYPE] [--output FILE]")
+		fmt.Println("Missing search query. Use: fbads audience search <query> [--type TYPE] [--output FILE] [--class CLASS]")
+		fmt.Println(`Available type options:
+	adTargetingCategory: Search for interests, behaviors, demographics to use in ad targeting:
+		--class [interests|behaviors|demographics]
+	adinterest: Search for interests to use in ad targeting.
+	adgeolocation: Search for geographic locations for targeting, such as countries, regions, cities, or zip codes.
+	adlocale: Search for locales (languages) for targeting.
+	adcountry: Search for countries for targeting.
+	adregion: Search for regions within countries for targeting.
+	adcity: Search for cities for targeting.
+	adzip: Search for postal codes for targeting.
+	adcustomaudience: Search for custom audiences.
+	adworkemployer: Search for employers for targeting.
+	adworkposition: Search for job positions for targeting.
+	adeducationschool: Search for educational institutions for targeting.
+	adeducationmajor: Search for education majors for targeting.
+	adinterestvalid: Validate if an interest is valid for targeting.
+		`)
 		os.Exit(1)
 	}
 
+	index := 1
 	query := args[0]
-	searchType := "interest" // Default to interests
+	if args[0] == "--class" || args[0] == "-c" {
+		index = 0
+		query = ""
+	}
+
+	searchType := "adinterest" // Default to interests
+
 	var outputFile string
 
+	var class string
+
 	// Parse flags
-	for i := 1; i < len(args); i++ {
+	for i := index; i < len(args); i++ {
 		switch args[i] {
 		case "--type", "-t":
 			if i+1 < len(args) {
 				searchType = args[i+1]
+				i++
+			}
+		case "--class", "-c":
+			searchType = "adTargetingCategory"
+			if i+1 < len(args) {
+				class = args[i+1]
 				i++
 			}
 		case "--output", "-o":
@@ -603,17 +635,7 @@ func searchAudience(analyzer *audience.AudienceAnalyzer, args []string) {
 	var err error
 
 	// Perform search based on type
-	switch searchType {
-	case "interest":
-		fmt.Printf("Searching for interests matching: %s\n", query)
-		segments, err = analyzer.GetInterests(query)
-	case "behavior":
-		fmt.Printf("Searching for behaviors matching: %s\n", query)
-		segments, err = analyzer.GetBehaviors(query)
-	default:
-		fmt.Printf("Unknown segment type: %s. Supported types: interest, behavior\n", searchType)
-		os.Exit(1)
-	}
+	segments, err = analyzer.Search(searchType, class, query)
 
 	if err != nil {
 		fmt.Printf("Error searching for audience segments: %v\n", err)
@@ -638,8 +660,8 @@ func searchAudience(analyzer *audience.AudienceAnalyzer, args []string) {
 		if segment.Path != "" {
 			fmt.Printf("   Category: %s\n", segment.Path)
 		}
-		if segment.Size > 0 {
-			fmt.Printf("   Audience size: %d\n", segment.Size)
+		if segment.LowerBound > 0 || segment.UpperBound > 0 {
+			fmt.Printf("   Audience size: %d - %d\n", segment.LowerBound, segment.UpperBound)
 		}
 		fmt.Println()
 	}
@@ -709,7 +731,7 @@ func filterAudience(analyzer *audience.AudienceAnalyzer, args []string) {
 
 	// In a real implementation, we would search for both interests and behaviors
 	// For example:
-	// interests, err := analyzer.GetInterests(query)
+	// interests, err := analyzer.Search(query)
 	// if err != nil {
 	//     fmt.Printf("Error searching for interests: %v\n", err)
 	//     os.Exit(1)
@@ -761,8 +783,8 @@ func filterAudience(analyzer *audience.AudienceAnalyzer, args []string) {
 		if segment.Description != "" {
 			fmt.Printf("   Description: %s\n", segment.Description)
 		}
-		if segment.Size > 0 {
-			fmt.Printf("   Audience size: %d\n", segment.Size)
+		if segment.LowerBound > 0 || segment.UpperBound > 0 {
+			fmt.Printf("   Audience size: %d - %d\n", segment.LowerBound, segment.UpperBound)
 		}
 		fmt.Println()
 	}
@@ -1428,12 +1450,12 @@ func loadParamsFromFile(filePath string) (url.Values, error) {
 func duplicateCampaign(cfg *config.Config, campaignID string, args []string) {
 	// Parse flags
 	var (
-		campaignName  string
-		status        string = "PAUSED" // Default to PAUSED for safety
-		startDateStr  string
-		endDateStr    string
-		budgetFactor  float64 = 1.0 // Default to same budget
-		dryRun        bool
+		campaignName string
+		status       string = "PAUSED" // Default to PAUSED for safety
+		startDateStr string
+		endDateStr   string
+		budgetFactor float64 = 1.0 // Default to same budget
+		dryRun       bool
 	)
 
 	// Handle flags
@@ -1496,10 +1518,10 @@ func duplicateCampaign(cfg *config.Config, campaignID string, args []string) {
 
 	// Convert to a campaign configuration
 	campaignConfig := convertToConfig(details)
-	
+
 	// For duplication, we need to ensure we're not carrying over any IDs
 	// The Create function will assign new IDs
-	
+
 	// Remove any unsupported fields from creatives based on recent API changes
 	// The Facebook API error shows that image_url is no longer supported in link_data
 
@@ -1532,12 +1554,12 @@ func duplicateCampaign(cfg *config.Config, campaignID string, args []string) {
 		// Convert from cents to dollars (e.g., 2000 cents -> $20.00)
 		campaignConfig.DailyBudget = campaignConfig.DailyBudget / 100
 	}
-	
+
 	if campaignConfig.LifetimeBudget > 0 {
 		// Convert from cents to dollars (e.g., 2000 cents -> $20.00)
 		campaignConfig.LifetimeBudget = campaignConfig.LifetimeBudget / 100
 	}
-	
+
 	// Apply budget factor after the conversion
 	if budgetFactor != 1.0 {
 		if campaignConfig.DailyBudget > 0 {
@@ -1565,11 +1587,11 @@ func duplicateCampaign(cfg *config.Config, campaignID string, args []string) {
 		}
 		// Set the status to match the campaign
 		campaignConfig.Ads[i].Status = status
-		
+
 		// Remove ImageURL field which is no longer supported by the Facebook API
 		// This fixes the error "The field image_url is not supported in the field link_data of object_story_spec"
 		campaignConfig.Ads[i].Creative.ImageURL = ""
-		
+
 		// Ensure the LinkURL is not empty
 		if campaignConfig.Ads[i].Creative.LinkURL == "" {
 			fmt.Println("Warning: Link URL is empty in ad creative. Setting a default link to prevent API error.")
@@ -1648,9 +1670,9 @@ func printUsage() {
 	fmt.Println("")
 	fmt.Println("  audience <subcommand> [args]")
 	fmt.Println("                           Audience targeting and analysis commands")
-	fmt.Println("    - search <query>       Search for audience interests or behaviors")
-	fmt.Println("      --type, -t <type>    Segment type (interest, behavior)")
-	fmt.Println("      --output, -o <file>  Export results to file")
+	fmt.Println("    - interest-search <query>  Search for audience interests or behaviors")
+	fmt.Println("      --type, -t <type>        Segment type (interest, behavior)")
+	fmt.Println("      --output, -o <file>      Export results to file")
 	fmt.Println("    - filter               Filter audience segments")
 	fmt.Println("      --query, -q <query>  Initial search query")
 	fmt.Println("      --min-size <size>    Minimum audience size")
