@@ -93,3 +93,4 @@
 - [ ] Implement anomaly detection for campaign performance
 - [ ] Create weekly optimization effectiveness reports
 - [ ] Build visualization for campaign performance metrics
+- [ ] Strategy for changing the CPM in N percent increase, decrease, 48 hours delay.

@@ -9,12 +9,13 @@ A robust, feature-rich command-line interface for Facebook Ads management built 
 
 - Campaign management (create, update, duplicate, export)
 - List all ads campaigns
-- Create campaigns from JSON configuration files
+- Create campaigns from JSON and YAML configuration files
 - Audience targeting and performance analytics for better targeting
-- Manage campaigns with minimal test budgets
+- Systematic campaign optimization through test combinations
+- Export existing campaigns to optimization YAML format
+- Automatic budget allocation and CPM bidding optimization
+- Batch campaign creation with API rate limiting
 - Custom reporting and insights
-- Optimize campaigns based on performance
-- Campaign optimization suggestions
 - Web dashboard for visualizing campaign performance
 
 ## Technical Details
@@ -89,8 +90,9 @@ Available commands:
 
 See the docs directory for detailed documentation on each command:
 
-- [Duplicating Campaigns](docs/duplicate_campaign.md) - Detailed guide on cloning campaigns
-- [Creating Campaigns](docs/create.md) - How to create campaigns from configuration
+- [Duplicating Campaigns](docs/campaign_duplicate.md) - Detailed guide on cloning campaigns
+- [Creating Campaigns](docs/campaign_create.md) - How to create campaigns from configuration
+- [Campaign Optimization](docs/campaign_optimization.md) - Systematic testing and optimization of ad campaigns
 - [API Endpoints](docs/api_endpoints.md) - Information on the Facebook API endpoints used
 
 ## Examples
@@ -129,6 +131,30 @@ fbads audience search "hiking"
 
 ```
 fbads report custom 2025-01-01 2025-02-01
+```
+
+### Exporting a Campaign to YAML for Optimization
+
+```
+fbads exportyaml 123456789 campaign.yaml --budget 2000 --test-percent 15
+```
+
+### Validating an Optimization YAML File
+
+```
+fbads optimize validate campaign.yaml
+```
+
+### Creating Test Campaigns from YAML
+
+```
+fbads optimize create campaign.yaml --limit 10 --batch-size 5 --dry-run
+```
+
+### Updating Campaign CPM Based on Performance
+
+```
+fbads optimize update 123456789,987654321 --max-cpm 12.5
 ```
 
 ## License
