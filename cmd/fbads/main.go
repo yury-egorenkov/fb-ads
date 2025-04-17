@@ -1020,11 +1020,12 @@ func validateYAMLConfig(cfg *config.Config, args []string) {
 // createTestCampaigns creates test campaigns from a YAML configuration
 func createTestCampaigns(cfg *config.Config, args []string) {
 	if len(args) < 1 {
-		fmt.Println("Missing YAML file path. Use: fbads optimize create <yaml_file> [--limit=N] [--batch-size=N] [--dry-run]")
+		fmt.Println("Missing YAML file path. Use: fbads optimize create <yaml_file> [--template=campaign.json] [--limit=N] [--batch-size=N] [--dry-run]")
 		os.Exit(1)
 	}
 
 	yamlPath := args[0]
+	templatePath := ""
 	limit := 0
 	batchSize := 3
 	dryRun := false
@@ -1033,6 +1034,11 @@ func createTestCampaigns(cfg *config.Config, args []string) {
 	// Parse optional flags
 	for i := 1; i < len(args); i++ {
 		switch {
+		case strings.HasPrefix(args[i], "--template="):
+			templatePath = strings.TrimPrefix(args[i], "--template=")
+		case args[i] == "--template" && i+1 < len(args):
+			templatePath = args[i+1]
+			i++
 		case strings.HasPrefix(args[i], "--limit="):
 			fmt.Sscanf(strings.TrimPrefix(args[i], "--limit="), "%d", &limit)
 		case args[i] == "--limit" && i+1 < len(args):
@@ -1059,6 +1065,24 @@ func createTestCampaigns(cfg *config.Config, args []string) {
 		fmt.Printf("Error parsing YAML configuration: %v\n", err)
 		os.Exit(1)
 	}
+	
+	// Load template if provided
+	var templateCampaign *models.CampaignConfig
+	if templatePath != "" {
+		fmt.Printf("Using campaign template from: %s\n", templatePath)
+		// Read the template file
+		templateData, err := os.ReadFile(templatePath)
+		if err != nil {
+			fmt.Printf("Error reading template file: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Parse the template
+		if err := json.Unmarshal(templateData, &templateCampaign); err != nil {
+			fmt.Printf("Error parsing template: %v\n", err)
+			os.Exit(1)
+		}
+	}
 
 	// Validate and print configuration details
 	fmt.Println("Creating test campaigns from configuration:")
@@ -1082,6 +1106,9 @@ func createTestCampaigns(cfg *config.Config, args []string) {
 	generator.SetLimit(limit)
 	generator.SetMaxBatchSize(batchSize)
 	generator.SetPriority(priority)
+	if templateCampaign != nil {
+		generator.SetTemplate(templateCampaign)
+	}
 
 	// Generate all combinations
 	if err := generator.GenerateAllCombinations(); err != nil {
