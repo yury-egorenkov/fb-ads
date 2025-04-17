@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,8 +22,8 @@ type TimeRange struct {
 
 // InsightsRequest represents a request for campaign insights
 type InsightsRequest struct {
-	Level          string    `json:"level"`           // campaign, adset, ad
-	IDs            []string  `json:"ids,omitempty"`   // specific IDs to filter
+	Level          string    `json:"level"`         // campaign, adset, ad
+	IDs            []string  `json:"ids,omitempty"` // specific IDs to filter
 	TimeRange      TimeRange `json:"time_range"`
 	Fields         []string  `json:"fields"`
 	Filtering      []Filter  `json:"filtering,omitempty"`
@@ -31,9 +32,9 @@ type InsightsRequest struct {
 
 // Filter represents a filter for insights query
 type Filter struct {
-	Field    string        `json:"field"`
-	Operator string        `json:"operator"`
-	Value    interface{}   `json:"value"`
+	Field    string      `json:"field"`
+	Operator string      `json:"operator"`
+	Value    interface{} `json:"value"`
 }
 
 // MetricsCollector handles collection of campaign metrics
@@ -68,78 +69,78 @@ func (m *MetricsCollector) CollectCampaignMetrics(request InsightsRequest) ([]ut
 			"cost_per_action_type",
 		}
 	}
-	
+
 	params := url.Values{}
 	params.Set("level", request.Level)
 	params.Set("fields", strings.Join(request.Fields, ","))
-	
+
 	// Add time range
 	timeRangeJSON, _ := json.Marshal(request.TimeRange)
 	params.Set("time_range", string(timeRangeJSON))
-	
+
 	// Add filtering if present
 	if len(request.Filtering) > 0 {
 		filteringJSON, _ := json.Marshal(request.Filtering)
 		params.Set("filtering", string(filteringJSON))
 	}
-	
+
 	// Add breakdown if present
 	if request.BreakdownsType != "" {
 		params.Set("breakdowns", request.BreakdownsType)
 	}
-	
+
 	endpoint := fmt.Sprintf("act_%s/insights", m.accountID)
-	
+
 	req, err := m.auth.GetAuthenticatedRequest(endpoint, params)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
-	
+
 	resp, err := m.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error executing request: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("API error: %s - %s", resp.Status, string(body))
 	}
-	
+
 	// Parse the response into a raw map first
 	var rawResponse map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&rawResponse); err != nil {
 		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
-	
+
 	// Extract the data array
 	dataArray, ok := rawResponse["data"].([]interface{})
 	if !ok {
 		return nil, fmt.Errorf("unexpected response format")
 	}
-	
+
 	// Process the data into campaign performances
 	var performances []utils.CampaignPerformance
-	
+
 	for _, item := range dataArray {
 		itemMap, ok := item.(map[string]interface{})
 		if !ok {
 			continue
 		}
-		
+
 		// Extract campaign ID from the response
 		campaignID, _ := itemMap["campaign_id"].(string)
-		
+
 		// Extract campaign name
 		campaignName, _ := itemMap["campaign_name"].(string)
-		
+
 		// Extract metrics
 		spend, _ := itemMap["spend"].(float64)
 		impressions, _ := itemMap["impressions"].(float64)
 		clicks, _ := itemMap["clicks"].(float64)
 		ctr, _ := itemMap["ctr"].(float64)
 		cpm, _ := itemMap["cpm"].(float64)
-		
+
 		// Calculate conversions from actions
 		var conversions int
 		if actions, ok := itemMap["actions"].([]interface{}); ok {
@@ -148,7 +149,7 @@ func (m *MetricsCollector) CollectCampaignMetrics(request InsightsRequest) ([]ut
 				if !ok {
 					continue
 				}
-				
+
 				actionType, _ := actionMap["action_type"].(string)
 				if actionType == "offsite_conversion" {
 					value, _ := actionMap["value"].(float64)
@@ -156,7 +157,7 @@ func (m *MetricsCollector) CollectCampaignMetrics(request InsightsRequest) ([]ut
 				}
 			}
 		}
-		
+
 		// Calculate ROAS
 		var roas float64 = 0
 		if spend > 0 && conversions > 0 {
@@ -165,7 +166,7 @@ func (m *MetricsCollector) CollectCampaignMetrics(request InsightsRequest) ([]ut
 			averageOrderValue := 50.0 // Example: average order is worth $50
 			roas = float64(conversions) * averageOrderValue / spend
 		}
-		
+
 		// Create campaign performance object
 		performance := utils.CampaignPerformance{
 			CampaignID:  campaignID,
@@ -180,10 +181,10 @@ func (m *MetricsCollector) CollectCampaignMetrics(request InsightsRequest) ([]ut
 			ROAS:        roas,
 			LastUpdated: time.Now(),
 		}
-		
+
 		performances = append(performances, performance)
 	}
-	
+
 	return performances, nil
 }
 
@@ -191,12 +192,12 @@ func (m *MetricsCollector) CollectCampaignMetrics(request InsightsRequest) ([]ut
 func (m *MetricsCollector) StoreMetrics(performances []utils.CampaignPerformance, filePath string) error {
 	// Create a statistics manager with file storage
 	statsManager := NewStatisticsManager(m, StorageTypeFile, filepath.Dir(filePath))
-	
+
 	// Store the metrics
 	if err := statsManager.StoreStatistics(performances); err != nil {
 		return fmt.Errorf("error storing metrics: %w", err)
 	}
-	
+
 	return nil
 }
 

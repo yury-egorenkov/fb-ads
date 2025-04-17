@@ -67,6 +67,42 @@ fbads stats analyze --campaign 123456789 --start 2023-01-01 --end 2023-01-31
 fbads stats analyze --days 7
 ```
 
+### Validating Campaign Data
+
+The `validate` subcommand checks if campaign data meets minimum thresholds required for reliable optimization decisions. It helps ensure you only make optimization decisions when you have sufficient data.
+
+```
+fbads stats validate [options]
+```
+
+Options:
+- `--start, -s <date>`: Start date in YYYY-MM-DD format
+- `--end, -e <date>`: End date in YYYY-MM-DD format
+- `--days, -d <num>`: Number of days to go back from today (default: 30)
+- `--campaign, -c <id>`: Validate a specific campaign (optional)
+- `--format, -f <format>`: Output format: `json` or `table` (default: `json`)
+
+Example:
+```
+# Validate all campaigns for the last 30 days
+fbads stats validate --format table
+
+# Validate a specific campaign
+fbads stats validate --campaign 123456789 --days 14
+
+# Get validation results in JSON format for all campaigns in a date range
+fbads stats validate --start 2023-01-01 --end 2023-01-31 --format json
+```
+
+Validation checks the following thresholds:
+- Minimum impressions (default: 1,000)
+- Minimum clicks (default: 10)
+- Minimum running time (default: 24 hours)
+- Minimum data points (default: 2)
+- Minimum spend (default: $1.00)
+
+The command also provides wait recommendations when campaigns need more time to gather sufficient data.
+
 ### Exporting Statistics
 
 The `export` subcommand exports statistics to a CSV file for further analysis in spreadsheet applications.

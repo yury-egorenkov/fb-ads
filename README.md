@@ -140,6 +140,13 @@ fbads stats analyze --format table
 fbads stats analyze --campaign 123456789 --start 2025-01-01 --end 2025-01-31
 ```
 
+### Validating Campaign Data for Optimization
+
+```
+fbads stats validate --format table
+fbads stats validate --campaign 123456789 --days 7
+```
+
 ### Exporting Statistics to CSV
 
 ```

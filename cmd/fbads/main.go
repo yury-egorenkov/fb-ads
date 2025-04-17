@@ -17,6 +17,7 @@ import (
 	"github.com/user/fb-ads/internal/optimization"
 	"github.com/user/fb-ads/pkg/auth"
 	"github.com/user/fb-ads/pkg/models"
+	"github.com/user/fb-ads/pkg/utils"
 )
 
 func main() {
@@ -936,7 +937,7 @@ func optimizeCampaigns(cfg *config.Config) {
 	}
 
 	subCmd := os.Args[2]
-	
+
 	switch subCmd {
 	case "validate":
 		validateYAMLConfig(cfg, os.Args[3:])
@@ -959,7 +960,7 @@ func validateYAMLConfig(cfg *config.Config, args []string) {
 	}
 
 	yamlPath := args[0]
-	
+
 	// Parse YAML configuration
 	campaignCfg, err := optimization.ParseYAMLConfig(yamlPath)
 	if err != nil {
@@ -970,14 +971,14 @@ func validateYAMLConfig(cfg *config.Config, args []string) {
 	fmt.Println("YAML configuration is valid")
 	fmt.Println("Campaign Name:", campaignCfg.Campaign.Name)
 	fmt.Printf("Total Budget: $%.2f\n", campaignCfg.Campaign.TotalBudget)
-	fmt.Printf("Test Budget: $%.2f (%.1f%%)\n", 
-		campaignCfg.Campaign.TotalBudget * campaignCfg.Campaign.TestBudgetPercentage / 100, 
+	fmt.Printf("Test Budget: $%.2f (%.1f%%)\n",
+		campaignCfg.Campaign.TotalBudget*campaignCfg.Campaign.TestBudgetPercentage/100,
 		campaignCfg.Campaign.TestBudgetPercentage)
 	fmt.Printf("Max CPM: $%.2f\n", campaignCfg.Campaign.MaxCPM)
 	fmt.Printf("Creatives: %d\n", len(campaignCfg.Creatives))
 	fmt.Printf("Audiences: %d\n", len(campaignCfg.TargetingOptions.Audiences))
 	fmt.Printf("Placements: %d\n", len(campaignCfg.TargetingOptions.Placements))
-	
+
 	// Create budget calculator
 	budgetCalc, err := optimization.NewBudgetCalculator(
 		campaignCfg.Campaign.TotalBudget,
@@ -988,12 +989,12 @@ func validateYAMLConfig(cfg *config.Config, args []string) {
 		fmt.Printf("Error creating budget calculator: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	// Calculate total number of test campaigns
-	totalCombinations := len(campaignCfg.Creatives) * 
+	totalCombinations := len(campaignCfg.Creatives) *
 		(len(campaignCfg.TargetingOptions.Audiences) + len(campaignCfg.TargetingOptions.Placements))
 	fmt.Printf("Total possible test combinations: %d\n", totalCombinations)
-	
+
 	// Calculate budget per campaign
 	budgetPerCampaign, err := budgetCalc.GetBudgetPerCampaign(totalCombinations)
 	if err != nil {
@@ -1001,14 +1002,14 @@ func validateYAMLConfig(cfg *config.Config, args []string) {
 		os.Exit(1)
 	}
 	fmt.Printf("Budget per test campaign: $%.2f\n", budgetPerCampaign)
-	
+
 	// Estimate impressions with automatic CPM (using max CPM for estimate)
 	impressions, err := budgetCalc.CalculateImpressions(budgetPerCampaign, budgetCalc.MaxCPM)
 	if err != nil {
 		fmt.Printf("Error calculating impressions: %v\n", err)
 	} else {
 		fmt.Printf("Estimated min impressions per campaign: %d\n", impressions)
-		
+
 		if impressions < 1000 {
 			fmt.Printf("WARNING: Estimated impressions below recommended minimum (1000)\n")
 			fmt.Printf("Consider reducing number of test combinations or increasing test budget\n")
@@ -1064,7 +1065,7 @@ func createTestCampaigns(cfg *config.Config, args []string) {
 	fmt.Println("Campaign Name:", campaignCfg.Campaign.Name)
 	fmt.Printf("Total Budget: $%.2f\n", campaignCfg.Campaign.TotalBudget)
 	fmt.Printf("Test Budget Percentage: %.1f%%\n", campaignCfg.Campaign.TestBudgetPercentage)
-	
+
 	// Create budget calculator
 	budgetCalc, err := optimization.NewBudgetCalculator(
 		campaignCfg.Campaign.TotalBudget,
@@ -1075,32 +1076,32 @@ func createTestCampaigns(cfg *config.Config, args []string) {
 		fmt.Printf("Error creating budget calculator: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	// Create campaign generator
 	generator := optimization.NewCampaignGenerator(campaignCfg, budgetCalc)
 	generator.SetLimit(limit)
 	generator.SetMaxBatchSize(batchSize)
 	generator.SetPriority(priority)
-	
+
 	// Generate all combinations
 	if err := generator.GenerateAllCombinations(); err != nil {
 		fmt.Printf("Error generating campaign combinations: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	// Display generation summary
 	totalCombinations := generator.TotalCombinations()
 	totalBatches := generator.TotalBatches()
-	
+
 	if limit > 0 && limit < totalCombinations {
-		fmt.Printf("Generated %d combinations (limited from %d possible)\n", 
-			totalCombinations, len(campaignCfg.Creatives) * 
-			(len(campaignCfg.TargetingOptions.Audiences) + len(campaignCfg.TargetingOptions.Placements)))
+		fmt.Printf("Generated %d combinations (limited from %d possible)\n",
+			totalCombinations, len(campaignCfg.Creatives)*
+				(len(campaignCfg.TargetingOptions.Audiences)+len(campaignCfg.TargetingOptions.Placements)))
 	} else {
 		fmt.Printf("Generated %d combinations\n", totalCombinations)
 	}
 	fmt.Printf("Batch size: %d, Total batches: %d\n", batchSize, totalBatches)
-	
+
 	// Get budget per campaign
 	budgetPerCampaign, err := budgetCalc.GetBudgetPerCampaign(totalCombinations)
 	if err != nil {
@@ -1108,15 +1109,15 @@ func createTestCampaigns(cfg *config.Config, args []string) {
 		os.Exit(1)
 	}
 	fmt.Printf("Budget per test campaign: $%.2f\n", budgetPerCampaign)
-	
+
 	// Create rate limiter for Facebook API calls
 	rateLimiter := optimization.NewRateLimiter()
 	rateLimiter.SetRequestInterval(500 * time.Millisecond) // Facebook's rate limit is relatively low
-	
+
 	// Process all batches
 	if dryRun {
 		fmt.Println("\nDry run mode - showing first batch without creating campaigns:")
-		
+
 		// Just get the first batch for preview
 		batch := generator.GetNextBatch()
 		for i, combination := range batch {
@@ -1131,7 +1132,7 @@ func createTestCampaigns(cfg *config.Config, args []string) {
 			fmt.Printf("  Budget: $%.2f\n", combination.Budget)
 			fmt.Printf("  CPM Bid: $%.2f\n", combination.BidAmount)
 		}
-		
+
 		fmt.Printf("\nRemaining batches: %d\n", totalBatches-1)
 		fmt.Println("\nNo campaigns were created (dry run mode)")
 	} else {
@@ -1142,10 +1143,10 @@ func createTestCampaigns(cfg *config.Config, args []string) {
 			cfg.AccessToken,
 			cfg.APIVersion,
 		)
-		
+
 		// Create campaign creator
 		campaignCreator := internal_campaign.NewCampaignCreator(authClient, cfg.AccountID)
-		
+
 		// Ask for confirmation before proceeding
 		fmt.Printf("\nThis will create %d test campaigns. Proceed? (y/n): ", totalCombinations)
 		var confirm string
@@ -1154,38 +1155,38 @@ func createTestCampaigns(cfg *config.Config, args []string) {
 			fmt.Println("Campaign creation cancelled.")
 			return
 		}
-		
+
 		// Create a context with timeout for the entire operation
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
-		
+
 		createdCount := 0
 		failedCount := 0
-		
+
 		// Process all batches
 		for {
 			batch := generator.GetNextBatch()
 			if len(batch) == 0 {
 				break // No more combinations
 			}
-			
-			fmt.Printf("\nProcessing batch %d/%d (%d campaigns)...\n", 
+
+			fmt.Printf("\nProcessing batch %d/%d (%d campaigns)...\n",
 				generator.CurrentBatch, totalBatches, len(batch))
-			
+
 			for i, combination := range batch {
 				// Convert to Facebook campaign configuration
 				facebookCampaign := generator.ConvertToFacebookCampaign(combination)
-				
-				fmt.Printf("[%d/%d] Creating campaign: %s... ", 
+
+				fmt.Printf("[%d/%d] Creating campaign: %s... ",
 					createdCount+failedCount+1, totalCombinations, facebookCampaign.Name)
 				// Use i to avoid "not used" warning
 				_ = i
-				
+
 				// Execute with rate limiting and retries
 				err := rateLimiter.Execute(ctx, func() error {
 					return campaignCreator.CreateFromConfig(facebookCampaign)
 				})
-				
+
 				if err != nil {
 					fmt.Printf("FAILED: %v\n", err)
 					failedCount++
@@ -1193,7 +1194,7 @@ func createTestCampaigns(cfg *config.Config, args []string) {
 					fmt.Println("SUCCESS")
 					createdCount++
 				}
-				
+
 				// Check if context was cancelled (timeout or user interrupt)
 				select {
 				case <-ctx.Done():
@@ -1204,13 +1205,13 @@ func createTestCampaigns(cfg *config.Config, args []string) {
 				}
 			}
 		}
-		
+
 		// Print final summary
 		fmt.Printf("\nCampaign creation completed:\n")
 		fmt.Printf("  Successfully created: %d\n", createdCount)
 		fmt.Printf("  Failed: %d\n", failedCount)
 		fmt.Printf("  Total: %d\n", totalCombinations)
-		
+
 		// For now, provide a placeholder message since we haven't fully implemented the API integration
 		if createdCount == 0 && failedCount == 0 {
 			fmt.Println("\nNote: Campaign creation functionality will be implemented in the next version.")
@@ -1242,17 +1243,17 @@ func updateCampaignCPM(cfg *config.Config, args []string) {
 
 	fmt.Printf("Processing CPM optimization for %d campaigns\n", len(campaignIDs))
 	fmt.Printf("Maximum CPM: $%.2f\n", maxCPM)
-	
+
 	// This is placeholder code for the future implementation
 	// Will be implemented in the next version
-	
+
 	// For now, just show placeholders to indicate future functionality
-	
+
 	// TODO: Implement CPM optimization logic with the API client
-	
+
 	for _, campaignID := range campaignIDs {
 		fmt.Printf("Campaign %s: CPM optimization will be implemented in the next version\n", campaignID)
-		
+
 		// In a real implementation, we would:
 		// 1. Get campaign performance data
 		// 2. Calculate optimal CPM
@@ -1382,10 +1383,10 @@ func exportCampaign(cfg *config.Config, campaignID string, args []string) {
 func exportCampaignYAML(cfg *config.Config, campaignID string, args []string) {
 	// Set up default export config
 	exporterConfig := optimization.DefaultExporterConfig()
-	
+
 	// Determine output file name
 	outputFile := campaignID + ".yaml"
-	
+
 	// Parse arguments
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--budget" && i+1 < len(args) {
@@ -1402,10 +1403,10 @@ func exportCampaignYAML(cfg *config.Config, campaignID string, args []string) {
 			outputFile = args[i]
 		}
 	}
-	
+
 	// Set output path
 	exporterConfig.OutputPath = outputFile
-	
+
 	// Create auth client
 	authClient := auth.NewFacebookAuth(
 		cfg.AppID,
@@ -1425,19 +1426,19 @@ func exportCampaignYAML(cfg *config.Config, campaignID string, args []string) {
 		fmt.Printf("Error fetching campaign details: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	// Create exporter
 	exporter := optimization.NewExporter(exporterConfig)
-	
+
 	// Export campaign to YAML
 	if err := exporter.ExportCampaign(details); err != nil {
 		fmt.Printf("Error exporting campaign to YAML: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Printf("Campaign exported to YAML for optimization: %s\n", outputFile)
-	fmt.Printf("Configuration: Total Budget: $%.2f, Test Budget: %.1f%%, Max CPM: $%.2f\n", 
-		exporterConfig.TotalBudget, 
+	fmt.Printf("Configuration: Total Budget: $%.2f, Test Budget: %.1f%%, Max CPM: $%.2f\n",
+		exporterConfig.TotalBudget,
 		exporterConfig.TestBudgetPercentage,
 		exporterConfig.MaxCPM)
 }
@@ -2068,7 +2069,7 @@ func handleStatistics(cfg *config.Config, subCmd string, args []string) {
 		endDateStr   string
 		campaignID   string
 		outputFile   string
-		days         int = 30 // Default to 30 days
+		days         int    = 30     // Default to 30 days
 		format       string = "json" // Default format
 	)
 
@@ -2145,22 +2146,24 @@ func handleStatistics(cfg *config.Config, subCmd string, args []string) {
 	case "export":
 		if outputFile == "" {
 			// Default output file name
-			outputFile = fmt.Sprintf("stats_export_%s_to_%s.csv", 
-				startDate.Format("2006-01-02"), 
+			outputFile = fmt.Sprintf("stats_export_%s_to_%s.csv",
+				startDate.Format("2006-01-02"),
 				endDate.Format("2006-01-02"))
 		}
 		exportStatistics(statsManager, startDate, endDate, outputFile)
+	case "validate":
+		validateCampaignData(statsManager, startDate, endDate, campaignID, format)
 	default:
 		fmt.Printf("Unknown stats subcommand: %s\n", subCmd)
-		fmt.Println("Available subcommands: collect, analyze, export")
+		fmt.Println("Available subcommands: collect, analyze, export, validate")
 		os.Exit(1)
 	}
 }
 
 // collectStatistics collects metrics for the given date range
 func collectStatistics(statsManager *api.StatisticsManager, startDate, endDate time.Time) {
-	fmt.Printf("Collecting campaign statistics from %s to %s...\n", 
-		startDate.Format("2006-01-02"), 
+	fmt.Printf("Collecting campaign statistics from %s to %s...\n",
+		startDate.Format("2006-01-02"),
 		endDate.Format("2006-01-02"))
 
 	// Process one day at a time to get daily statistics
@@ -2199,23 +2202,23 @@ func collectStatistics(statsManager *api.StatisticsManager, startDate, endDate t
 // analyzeStatistics analyzes campaign performance for the given date range
 func analyzeStatistics(statsManager *api.StatisticsManager, startDate, endDate time.Time, campaignID, format string) {
 	if campaignID != "" {
-		fmt.Printf("Analyzing statistics for campaign %s from %s to %s...\n", 
-			campaignID, 
-			startDate.Format("2006-01-02"), 
+		fmt.Printf("Analyzing statistics for campaign %s from %s to %s...\n",
+			campaignID,
+			startDate.Format("2006-01-02"),
 			endDate.Format("2006-01-02"))
-		
+
 		// Get campaign-specific statistics
 		stats, err := statsManager.GetCampaignStatistics(campaignID, startDate, endDate)
 		if err != nil {
 			fmt.Printf("Error analyzing campaign statistics: %v\n", err)
 			os.Exit(1)
 		}
-		
+
 		if len(stats) == 0 {
 			fmt.Println("No statistics found for the specified campaign and date range.")
 			return
 		}
-		
+
 		// Display statistics based on format
 		switch format {
 		case "json":
@@ -2226,24 +2229,24 @@ func analyzeStatistics(statsManager *api.StatisticsManager, startDate, endDate t
 			fmt.Printf("Unsupported format: %s. Using table format.\n", format)
 			displayCampaignStatisticsTable(stats)
 		}
-		
+
 	} else {
-		fmt.Printf("Analyzing statistics for all campaigns from %s to %s...\n", 
-			startDate.Format("2006-01-02"), 
+		fmt.Printf("Analyzing statistics for all campaigns from %s to %s...\n",
+			startDate.Format("2006-01-02"),
 			endDate.Format("2006-01-02"))
-		
+
 		// Perform full statistical analysis
 		analysis, err := statsManager.AnalyzeStatistics(startDate, endDate)
 		if err != nil {
 			fmt.Printf("Error analyzing statistics: %v\n", err)
 			os.Exit(1)
 		}
-		
+
 		if len(analysis.CampaignStats) == 0 {
 			fmt.Println("No statistics found for the specified date range.")
 			return
 		}
-		
+
 		// Display statistics based on format
 		switch format {
 		case "json":
@@ -2264,7 +2267,7 @@ func displayStatisticsJSON(stats []utils.CampaignPerformance) {
 		fmt.Printf("Error encoding statistics to JSON: %v\n", err)
 		return
 	}
-	
+
 	fmt.Println(string(data))
 }
 
@@ -2274,11 +2277,11 @@ func displayCampaignStatisticsTable(stats []utils.CampaignPerformance) {
 		fmt.Println("No statistics available.")
 		return
 	}
-	
+
 	// Print header
 	fmt.Printf("%-10s | %-10s | %-10s | %-8s | %-6s | %-8s | %-8s | %-8s | %-8s\n",
 		"DATE", "IMPRESSIONS", "CLICKS", "CTR (%)", "SPEND", "CPM", "CPC", "CONV", "ROAS")
-	
+
 	// Print separator
 	fmt.Printf("%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s\n",
 		strings.Repeat("-", 10),
@@ -2290,16 +2293,16 @@ func displayCampaignStatisticsTable(stats []utils.CampaignPerformance) {
 		strings.Repeat("-", 8),
 		strings.Repeat("-", 8),
 		strings.Repeat("-", 8))
-	
+
 	// Print data rows
 	totalImpressions := 0
 	totalClicks := 0
 	totalSpend := 0.0
 	totalConversions := 0
-	
+
 	// Sort by date
 	sortPerformancesByDate(stats)
-	
+
 	for _, stat := range stats {
 		fmt.Printf("%-10s | %-10d | %-10d | %-8.2f | %-6.2f | %-8.2f | %-8.2f | %-8d | %-8.2f\n",
 			stat.LastUpdated.Format("2006-01-02"),
@@ -2311,13 +2314,13 @@ func displayCampaignStatisticsTable(stats []utils.CampaignPerformance) {
 			stat.CPC,
 			stat.Conversions,
 			stat.ROAS)
-		
+
 		totalImpressions += stat.Impressions
 		totalClicks += stat.Clicks
 		totalSpend += stat.Spend
 		totalConversions += stat.Conversions
 	}
-	
+
 	// Print totals
 	fmt.Printf("%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s\n",
 		strings.Repeat("-", 10),
@@ -2329,25 +2332,25 @@ func displayCampaignStatisticsTable(stats []utils.CampaignPerformance) {
 		strings.Repeat("-", 8),
 		strings.Repeat("-", 8),
 		strings.Repeat("-", 8))
-	
+
 	// Calculate averages for totals
 	var avgCTR, avgCPM, avgCPC, avgROAS float64
-	
+
 	if totalImpressions > 0 {
 		avgCTR = float64(totalClicks) / float64(totalImpressions) * 100
 		avgCPM = totalSpend / float64(totalImpressions) * 1000
 	}
-	
+
 	if totalClicks > 0 {
 		avgCPC = totalSpend / float64(totalClicks)
 	}
-	
+
 	if totalSpend > 0 && totalConversions > 0 {
 		// Simplified ROAS calculation
 		avgOrderValue := 50.0 // Example value, same as in the analyzer
 		avgROAS = float64(totalConversions) * avgOrderValue / totalSpend
 	}
-	
+
 	fmt.Printf("%-10s | %-10d | %-10d | %-8.2f | %-6.2f | %-8.2f | %-8.2f | %-8d | %-8.2f\n",
 		"TOTAL",
 		totalImpressions,
@@ -2378,7 +2381,7 @@ func displayAnalysisJSON(analysis *api.AggregateStatistics) {
 		fmt.Printf("Error encoding analysis to JSON: %v\n", err)
 		return
 	}
-	
+
 	fmt.Println(string(data))
 }
 
@@ -2386,10 +2389,10 @@ func displayAnalysisJSON(analysis *api.AggregateStatistics) {
 func displayAnalysisTable(analysis *api.AggregateStatistics) {
 	// Print summary header
 	fmt.Println("Campaign Performance Summary")
-	fmt.Printf("Date Range: %s to %s\n\n", 
-		analysis.StartDate.Format("2006-01-02"), 
+	fmt.Printf("Date Range: %s to %s\n\n",
+		analysis.StartDate.Format("2006-01-02"),
 		analysis.EndDate.Format("2006-01-02"))
-	
+
 	// Print overall statistics
 	fmt.Printf("Total Impressions: %d\n", analysis.TotalImpressions)
 	fmt.Printf("Total Clicks: %d\n", analysis.TotalClicks)
@@ -2401,11 +2404,11 @@ func displayAnalysisTable(analysis *api.AggregateStatistics) {
 	if analysis.TotalConversions > 0 {
 		fmt.Printf("Average CPA: $%.2f\n", analysis.AvgCPA)
 	}
-	
+
 	// Print trend summary if available
 	if analysis.TrendImpressions != nil && len(analysis.TrendImpressions.Values) > 1 {
 		fmt.Printf("\nTrends (% change over period):\n")
-		
+
 		if analysis.TrendImpressions != nil {
 			fmt.Printf("  Impressions: %.1f%%\n", analysis.TrendImpressions.Change)
 		}
@@ -2422,12 +2425,12 @@ func displayAnalysisTable(analysis *api.AggregateStatistics) {
 			fmt.Printf("  Conversions: %.1f%%\n", analysis.TrendConversions.Change)
 		}
 	}
-	
+
 	// Print campaign-specific statistics
 	fmt.Printf("\nCampaign Performance Breakdown:\n")
 	fmt.Printf("%-20s | %-10s | %-10s | %-8s | %-8s | %-8s | %-8s | %-8s\n",
 		"CAMPAIGN", "IMPRESSIONS", "CLICKS", "CTR (%)", "SPEND", "CPM", "CPC", "CONV")
-	
+
 	// Print separator
 	fmt.Printf("%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s\n",
 		strings.Repeat("-", 20),
@@ -2438,7 +2441,7 @@ func displayAnalysisTable(analysis *api.AggregateStatistics) {
 		strings.Repeat("-", 8),
 		strings.Repeat("-", 8),
 		strings.Repeat("-", 8))
-	
+
 	// Print data rows
 	for _, campaign := range analysis.CampaignStats {
 		// Truncate campaign name if too long
@@ -2446,7 +2449,7 @@ func displayAnalysisTable(analysis *api.AggregateStatistics) {
 		if len(name) > 17 {
 			name = name[:14] + "..."
 		}
-		
+
 		fmt.Printf("%-20s | %-10d | %-10d | %-8.2f | %-8.2f | %-8.2f | %-8.2f | %-8d\n",
 			name,
 			campaign.TotalImpressions,
@@ -2462,28 +2465,243 @@ func displayAnalysisTable(analysis *api.AggregateStatistics) {
 // exportStatistics exports campaign statistics to a CSV file
 func exportStatistics(statsManager *api.StatisticsManager, startDate, endDate time.Time, outputFile string) {
 	fmt.Printf("Exporting statistics from %s to %s...\n",
-		startDate.Format("2006-01-02"), 
+		startDate.Format("2006-01-02"),
 		endDate.Format("2006-01-02"))
-	
+
 	// Analyze statistics
 	analysis, err := statsManager.AnalyzeStatistics(startDate, endDate)
 	if err != nil {
 		fmt.Printf("Error analyzing statistics: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	if len(analysis.CampaignStats) == 0 {
 		fmt.Println("No statistics found for the specified date range.")
 		return
 	}
-	
+
 	// Export to CSV
 	if err := statsManager.ExportStatisticsCSV(analysis, outputFile); err != nil {
 		fmt.Printf("Error exporting statistics to CSV: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Printf("Statistics exported successfully to: %s\n", outputFile)
+}
+
+// validateCampaignData validates campaign performance data against thresholds
+func validateCampaignData(statsManager *api.StatisticsManager, startDate, endDate time.Time, campaignID, format string) {
+	// Create an optimization validator with default thresholds
+	validator := optimization.NewPerformanceValidator()
+
+	// Retrieve campaign data for validation
+	var validationResults map[string]optimization.ValidationResult
+
+	if campaignID != "" {
+		// Validate a specific campaign
+		fmt.Printf("Validating statistics for campaign %s from %s to %s...\n",
+			campaignID,
+			startDate.Format("2006-01-02"),
+			endDate.Format("2006-01-02"))
+
+		stats, err := statsManager.GetCampaignStatistics(campaignID, startDate, endDate)
+		if err != nil {
+			fmt.Printf("Error getting campaign statistics: %v\n", err)
+			os.Exit(1)
+		}
+
+		if len(stats) == 0 {
+			fmt.Println("No statistics found for the specified campaign and date range.")
+			return
+		}
+
+		result := validator.ValidateCampaignData(campaignID, stats)
+		validationResults = map[string]optimization.ValidationResult{
+			campaignID: result,
+		}
+	} else {
+		// Validate all campaigns
+		fmt.Printf("Validating statistics for all campaigns from %s to %s...\n",
+			startDate.Format("2006-01-02"),
+			endDate.Format("2006-01-02"))
+
+		allStats, err := statsManager.GetAllCampaignStatistics(startDate, endDate)
+		if err != nil {
+			fmt.Printf("Error getting campaign statistics: %v\n", err)
+			os.Exit(1)
+		}
+
+		if len(allStats) == 0 {
+			fmt.Println("No statistics found for the specified date range.")
+			return
+		}
+
+		validationResults = validator.ValidateCampaignsData(allStats)
+	}
+
+	// Output results based on format
+	switch format {
+	case "json":
+		displayValidationResultsJSON(validationResults)
+	case "table":
+		displayValidationResultsTable(validationResults)
+	default:
+		fmt.Printf("Unsupported format: %s. Using table format.\n", format)
+		displayValidationResultsTable(validationResults)
+	}
+}
+
+// displayValidationResultsJSON displays validation results in JSON format
+func displayValidationResultsJSON(results map[string]optimization.ValidationResult) {
+	data, err := json.MarshalIndent(results, "", "  ")
+	if err != nil {
+		fmt.Printf("Error encoding validation results to JSON: %v\n", err)
+		return
+	}
+
+	fmt.Println(string(data))
+}
+
+// displayValidationResultsTable displays validation results in table format
+func displayValidationResultsTable(results map[string]optimization.ValidationResult) {
+	// Count valid and invalid campaigns
+	var validCount, invalidCount int
+
+	// Print header
+	fmt.Println("Campaign Data Validation Results")
+	fmt.Println("-------------------------------")
+	fmt.Println("")
+
+	// Group campaigns by validity
+	validCampaigns := make([]optimization.ValidationResult, 0)
+	invalidCampaigns := make([]optimization.ValidationResult, 0)
+
+	for _, result := range results {
+		if result.IsValid {
+			validCampaigns = append(validCampaigns, result)
+			validCount++
+		} else {
+			invalidCampaigns = append(invalidCampaigns, result)
+			invalidCount++
+		}
+	}
+
+	// Print summary
+	fmt.Printf("Total campaigns: %d\n", len(results))
+	fmt.Printf("Valid campaigns: %d\n", validCount)
+	fmt.Printf("Invalid campaigns: %d\n", invalidCount)
+	fmt.Println("")
+
+	// Print valid campaigns
+	if len(validCampaigns) > 0 {
+		fmt.Println("Valid Campaigns:")
+		fmt.Printf("%-20s | %-10s | %-10s | %-10s | %-10s | %-10s\n",
+			"CAMPAIGN", "IMPRESSIONS", "CLICKS", "SPEND", "RUNTIME", "DATA POINTS")
+
+		// Print separator
+		fmt.Printf("%s-+-%s-+-%s-+-%s-+-%s-+-%s\n",
+			strings.Repeat("-", 20),
+			strings.Repeat("-", 10),
+			strings.Repeat("-", 10),
+			strings.Repeat("-", 10),
+			strings.Repeat("-", 10),
+			strings.Repeat("-", 10))
+
+		for _, result := range validCampaigns {
+			// If campaign name is available, use it; otherwise use ID
+			campaignName := result.CampaignID
+			if len(results) > 0 {
+				campaignName = truncateString(campaignName, 17)
+			}
+
+			fmt.Printf("%-20s | %-10d | %-10d | $%-9.2f | %-10s | %-10d\n",
+				campaignName,
+				result.Metrics.TotalImpressions,
+				result.Metrics.TotalClicks,
+				result.Metrics.TotalSpend,
+				formatDuration(result.RunningTime),
+				result.DataPoints)
+		}
+		fmt.Println("")
+	}
+
+	// Print invalid campaigns
+	if len(invalidCampaigns) > 0 {
+		fmt.Println("Invalid Campaigns:")
+		fmt.Printf("%-20s | %-10s | %-10s | %-10s | %-10s | %-35s\n",
+			"CAMPAIGN", "IMPRESSIONS", "CLICKS", "SPEND", "RUNTIME", "REASONS")
+
+		// Print separator
+		fmt.Printf("%s-+-%s-+-%s-+-%s-+-%s-+-%s\n",
+			strings.Repeat("-", 20),
+			strings.Repeat("-", 10),
+			strings.Repeat("-", 10),
+			strings.Repeat("-", 10),
+			strings.Repeat("-", 10),
+			strings.Repeat("-", 35))
+
+		for _, result := range invalidCampaigns {
+			// If campaign name is available, use it; otherwise use ID
+			campaignName := result.CampaignID
+			if len(results) > 0 {
+				campaignName = truncateString(campaignName, 17)
+			}
+
+			// Format reasons
+			reasonsText := ""
+			if len(result.Reasons) > 0 {
+				reasonsText = truncateString(result.Reasons[0], 32)
+				if len(result.Reasons) > 1 {
+					reasonsText += fmt.Sprintf(" (+%d more)", len(result.Reasons)-1)
+				}
+			}
+
+			fmt.Printf("%-20s | %-10d | %-10d | $%-9.2f | %-10s | %-35s\n",
+				campaignName,
+				result.Metrics.TotalImpressions,
+				result.Metrics.TotalClicks,
+				result.Metrics.TotalSpend,
+				formatDuration(result.RunningTime),
+				reasonsText)
+		}
+		fmt.Println("")
+
+		// Print wait recommendations
+		waitRecommendations := false
+		for _, result := range invalidCampaigns {
+			if result.RecommendWait {
+				if !waitRecommendations {
+					fmt.Println("Wait Recommendations:")
+					waitRecommendations = true
+				}
+				fmt.Printf("- Campaign %s: Wait approximately %s more\n",
+					result.CampaignID,
+					formatDuration(result.WaitTimeNeeded))
+			}
+		}
+
+		if waitRecommendations {
+			fmt.Println("\nNote: Some campaigns need more time to gather sufficient data for optimization decisions.")
+			fmt.Println("     Consider waiting before making optimization changes.")
+		}
+	}
+}
+
+// formatDuration formats a duration in a human-readable way
+func formatDuration(d time.Duration) string {
+	days := int(d.Hours() / 24)
+	hours := int(d.Hours()) % 24
+
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh", days, hours)
+	}
+
+	minutes := int(d.Minutes()) % 60
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	}
+
+	return fmt.Sprintf("%dm", minutes)
 }
 
 func printUsage() {
@@ -2542,6 +2760,12 @@ func printUsage() {
 	fmt.Println("      --end, -e <date>      End date (YYYY-MM-DD)")
 	fmt.Println("      --days, -d <num>      Number of days back from today (default: 30)")
 	fmt.Println("      --output, -o <file>   Output file path (defaults to stats_export_<date>.csv)")
+	fmt.Println("    - validate             Validate campaign data for optimization")
+	fmt.Println("      --start, -s <date>    Start date (YYYY-MM-DD)")
+	fmt.Println("      --end, -e <date>      End date (YYYY-MM-DD)")
+	fmt.Println("      --days, -d <num>      Number of days back from today (default: 30)")
+	fmt.Println("      --campaign, -c <id>   Specific campaign to validate (optional)")
+	fmt.Println("      --format, -f <fmt>    Output format: json or table (default: json)")
 	fmt.Println("")
 	fmt.Println("  audience <subcommand> [args]")
 	fmt.Println("                           Audience targeting and analysis commands")
