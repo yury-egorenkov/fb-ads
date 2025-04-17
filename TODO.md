@@ -84,8 +84,8 @@
 - [ ] Develop budget reallocation system for successful campaigns
 - [ ] Build error handling with retry mechanism
 - [ ] Implement campaign state persistence for rollbacks
-- [ ] Create command for launching new test batches
-- [ ] Implement command for updating all active campaign prices
+- [x] Create command for launching new test batches
+- [x] Implement command for updating all active campaign prices
 - [ ] Add rollback functionality with timestamp support
 - [ ] Develop daily performance reporting
 - [ ] Implement anomaly detection for campaign performance

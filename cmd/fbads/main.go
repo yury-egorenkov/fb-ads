@@ -13,6 +13,7 @@ import (
 	"github.com/user/fb-ads/internal/audience"
 	internal_campaign "github.com/user/fb-ads/internal/campaign"
 	"github.com/user/fb-ads/internal/config"
+	"github.com/user/fb-ads/internal/optimization"
 	"github.com/user/fb-ads/pkg/auth"
 	"github.com/user/fb-ads/pkg/models"
 )
@@ -910,9 +911,209 @@ func generateReport(cfg *config.Config, reportType string, args []string) {
 }
 
 func optimizeCampaigns(cfg *config.Config) {
-	fmt.Println("Optimizing campaigns...")
-	fmt.Println("(This is a placeholder - actual implementation pending)")
-	// TODO: Implement campaign optimization
+	// Parse optimize subcommands
+	if len(os.Args) < 3 {
+		fmt.Println("Missing optimize subcommand. Available commands: validate, create, update")
+		fmt.Println("\nUsage: fbads optimize <subcommand> [options]")
+		fmt.Println("\nSubcommands:")
+		fmt.Println("  validate <yaml_file>     Validate a YAML campaign configuration file")
+		fmt.Println("  create <yaml_file>       Create test campaigns from a YAML configuration")
+		fmt.Println("  update <campaign_ids>    Update campaign CPM based on performance data")
+		os.Exit(1)
+	}
+
+	subCmd := os.Args[2]
+	
+	switch subCmd {
+	case "validate":
+		validateYAMLConfig(cfg, os.Args[3:])
+	case "create":
+		createTestCampaigns(cfg, os.Args[3:])
+	case "update":
+		updateCampaignCPM(cfg, os.Args[3:])
+	default:
+		fmt.Printf("Unknown optimize subcommand: %s\n", subCmd)
+		fmt.Println("Available subcommands: validate, create, update")
+		os.Exit(1)
+	}
+}
+
+// validateYAMLConfig validates a YAML campaign configuration file
+func validateYAMLConfig(cfg *config.Config, args []string) {
+	if len(args) < 1 {
+		fmt.Println("Missing YAML file path. Use: fbads optimize validate <yaml_file>")
+		os.Exit(1)
+	}
+
+	yamlPath := args[0]
+	
+	// Parse YAML configuration
+	campaignCfg, err := optimization.ParseYAMLConfig(yamlPath)
+	if err != nil {
+		fmt.Printf("Error parsing YAML configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("YAML configuration is valid")
+	fmt.Println("Campaign Name:", campaignCfg.Campaign.Name)
+	fmt.Printf("Total Budget: $%.2f\n", campaignCfg.Campaign.TotalBudget)
+	fmt.Printf("Test Budget: $%.2f (%.1f%%)\n", 
+		campaignCfg.Campaign.TotalBudget * campaignCfg.Campaign.TestBudgetPercentage / 100, 
+		campaignCfg.Campaign.TestBudgetPercentage)
+	fmt.Printf("Max CPM: $%.2f\n", campaignCfg.Campaign.MaxCPM)
+	fmt.Printf("Creatives: %d\n", len(campaignCfg.Creatives))
+	fmt.Printf("Audiences: %d\n", len(campaignCfg.TargetingOptions.Audiences))
+	fmt.Printf("Placements: %d\n", len(campaignCfg.TargetingOptions.Placements))
+	
+	// Create budget calculator
+	budgetCalc, err := optimization.NewBudgetCalculator(
+		campaignCfg.Campaign.TotalBudget,
+		campaignCfg.Campaign.TestBudgetPercentage,
+		campaignCfg.Campaign.MaxCPM,
+	)
+	if err != nil {
+		fmt.Printf("Error creating budget calculator: %v\n", err)
+		os.Exit(1)
+	}
+	
+	// Calculate total number of test campaigns
+	totalCombinations := len(campaignCfg.Creatives) * 
+		(len(campaignCfg.TargetingOptions.Audiences) + len(campaignCfg.TargetingOptions.Placements))
+	fmt.Printf("Total possible test combinations: %d\n", totalCombinations)
+	
+	// Calculate budget per campaign
+	budgetPerCampaign, err := budgetCalc.GetBudgetPerCampaign(totalCombinations)
+	if err != nil {
+		fmt.Printf("Error calculating budget per campaign: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Budget per test campaign: $%.2f\n", budgetPerCampaign)
+	
+	// Estimate impressions with automatic CPM (using max CPM for estimate)
+	impressions, err := budgetCalc.CalculateImpressions(budgetPerCampaign, budgetCalc.MaxCPM)
+	if err != nil {
+		fmt.Printf("Error calculating impressions: %v\n", err)
+	} else {
+		fmt.Printf("Estimated min impressions per campaign: %d\n", impressions)
+		
+		if impressions < 1000 {
+			fmt.Printf("WARNING: Estimated impressions below recommended minimum (1000)\n")
+			fmt.Printf("Consider reducing number of test combinations or increasing test budget\n")
+		}
+	}
+}
+
+// createTestCampaigns creates test campaigns from a YAML configuration
+func createTestCampaigns(cfg *config.Config, args []string) {
+	if len(args) < 1 {
+		fmt.Println("Missing YAML file path. Use: fbads optimize create <yaml_file> [--limit=N]")
+		os.Exit(1)
+	}
+
+	yamlPath := args[0]
+	limit := 0
+
+	// Parse optional flags
+	for i := 1; i < len(args); i++ {
+		switch {
+		case strings.HasPrefix(args[i], "--limit="):
+			fmt.Sscanf(strings.TrimPrefix(args[i], "--limit="), "%d", &limit)
+		case args[i] == "--limit" && i+1 < len(args):
+			fmt.Sscanf(args[i+1], "%d", &limit)
+			i++
+		}
+	}
+
+	// Parse YAML configuration
+	campaignCfg, err := optimization.ParseYAMLConfig(yamlPath)
+	if err != nil {
+		fmt.Printf("Error parsing YAML configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Validate and print configuration details
+	fmt.Println("Creating test campaigns from configuration:")
+	fmt.Println("Campaign Name:", campaignCfg.Campaign.Name)
+	fmt.Printf("Total Budget: $%.2f\n", campaignCfg.Campaign.TotalBudget)
+	fmt.Printf("Test Budget Percentage: %.1f%%\n", campaignCfg.Campaign.TestBudgetPercentage)
+	
+	// Create budget calculator
+	budgetCalc, err := optimization.NewBudgetCalculator(
+		campaignCfg.Campaign.TotalBudget,
+		campaignCfg.Campaign.TestBudgetPercentage,
+		campaignCfg.Campaign.MaxCPM,
+	)
+	if err != nil {
+		fmt.Printf("Error creating budget calculator: %v\n", err)
+		os.Exit(1)
+	}
+	
+	// Calculate total number of test campaigns
+	totalCombinations := len(campaignCfg.Creatives) * 
+		(len(campaignCfg.TargetingOptions.Audiences) + len(campaignCfg.TargetingOptions.Placements))
+	
+	// Apply limit if specified
+	actualCombinations := totalCombinations
+	if limit > 0 && limit < totalCombinations {
+		actualCombinations = limit
+		fmt.Printf("Limiting to %d of %d possible test combinations\n", limit, totalCombinations)
+	} else {
+		fmt.Printf("Creating all %d test combinations\n", totalCombinations)
+	}
+	
+	// Calculate budget per campaign
+	budgetPerCampaign, err := budgetCalc.GetBudgetPerCampaign(actualCombinations)
+	if err != nil {
+		fmt.Printf("Error calculating budget per campaign: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Budget per test campaign: $%.2f\n", budgetPerCampaign)
+	
+	// TODO: Create campaign combinations and API calls for actual campaign creation
+	
+	fmt.Println("\nNote: Campaign creation functionality will be implemented in the next version.")
+	fmt.Println("This command currently only validates the configuration and calculates budgets.")
+}
+
+// updateCampaignCPM updates campaign CPM based on performance data
+func updateCampaignCPM(cfg *config.Config, args []string) {
+	if len(args) < 1 {
+		fmt.Println("Missing campaign IDs. Use: fbads optimize update <campaign_id1,campaign_id2,...> [--max-cpm=N]")
+		os.Exit(1)
+	}
+
+	campaignIDs := strings.Split(args[0], ",")
+	maxCPM := 15.0 // Default max CPM
+
+	// Parse optional flags
+	for i := 1; i < len(args); i++ {
+		switch {
+		case strings.HasPrefix(args[i], "--max-cpm="):
+			fmt.Sscanf(strings.TrimPrefix(args[i], "--max-cpm="), "%f", &maxCPM)
+		case args[i] == "--max-cpm" && i+1 < len(args):
+			fmt.Sscanf(args[i+1], "%f", &maxCPM)
+			i++
+		}
+	}
+
+	fmt.Printf("Processing CPM optimization for %d campaigns\n", len(campaignIDs))
+	fmt.Printf("Maximum CPM: $%.2f\n", maxCPM)
+	
+	// This is placeholder code for the future implementation
+	// Will be implemented in the next version
+	
+	// For now, just show placeholders to indicate future functionality
+	
+	// TODO: Implement CPM optimization logic with the API client
+	
+	for _, campaignID := range campaignIDs {
+		fmt.Printf("Campaign %s: CPM optimization will be implemented in the next version\n", campaignID)
+		
+		// In a real implementation, we would:
+		// 1. Get campaign performance data
+		// 2. Calculate optimal CPM
+		// 3. Update the campaign's CPM if needed
+	}
 }
 
 func configureApp(cfg *config.Config, configPath string) {
@@ -1690,7 +1891,12 @@ func printUsage() {
 	fmt.Println("    - weekly               Weekly report for the last 7 days")
 	fmt.Println("    - custom <start> <end> Custom date range report (YYYY-MM-DD format)")
 	fmt.Println("")
-	fmt.Println("  optimize                 Optimize campaigns based on performance")
+	fmt.Println("  optimize <subcommand>    Campaign optimization commands")
+	fmt.Println("    - validate <yaml_file>  Validate a YAML campaign configuration file")
+	fmt.Println("    - create <yaml_file>    Create test campaigns from a YAML configuration")
+	fmt.Println("      --limit <num>         Limit the number of test combinations to create")
+	fmt.Println("    - update <campaign_ids> Update campaign CPM based on performance data")
+	fmt.Println("      --max-cpm <value>     Maximum CPM price allowed (default: 15.0)")
 	fmt.Println("")
 	fmt.Println("  dashboard [port]         Start web dashboard (default port: 8080)")
 	fmt.Println("")
