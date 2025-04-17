@@ -661,7 +661,7 @@ func searchAudience(analyzer *audience.AudienceAnalyzer, args []string) {
 			fmt.Printf("   Category: %s\n", segment.Path)
 		}
 		if segment.LowerBound > 0 || segment.UpperBound > 0 {
-			fmt.Printf("   Audience size: %d - %d\n", segment.LowerBound, segment.UpperBound)
+			fmt.Printf("   Audience size: %s\n", audience.FormatAudienceRange(segment.LowerBound, segment.UpperBound))
 		}
 		fmt.Println()
 	}
@@ -784,7 +784,7 @@ func filterAudience(analyzer *audience.AudienceAnalyzer, args []string) {
 			fmt.Printf("   Description: %s\n", segment.Description)
 		}
 		if segment.LowerBound > 0 || segment.UpperBound > 0 {
-			fmt.Printf("   Audience size: %d - %d\n", segment.LowerBound, segment.UpperBound)
+			fmt.Printf("   Audience size: %s\n", audience.FormatAudienceRange(segment.LowerBound, segment.UpperBound))
 		}
 		fmt.Println()
 	}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -247,6 +248,48 @@ type ReachEstimateResponse struct {
 	} `json:"data"`
 }
 
+// FormatNumberReadable formats a number to a human-readable string (e.g., 1.2M, 450K)
+func FormatNumberReadable(num int64) string {
+	if num == 0 {
+		return "0"
+	}
+
+	abs := math.Abs(float64(num))
+
+	if abs >= 1e9 {
+		// Billions
+		value := float64(num) / 1000000000
+		return fmt.Sprintf("%.0fb", value)
+	}
+
+	if abs >= 1e6 {
+		// Millions
+		value := float64(num) / 1000000
+		return fmt.Sprintf("%.0fm", value)
+	}
+
+	if abs >= 1e3 {
+		// Thousands
+		value := float64(num) / 1000
+		return fmt.Sprintf("%.0fk", value)
+	}
+
+	return fmt.Sprintf("%d", num)
+}
+
+// FormatAudienceRange formats audience range in a human-readable format
+func FormatAudienceRange(lower, upper int64) string {
+	if lower == 0 && upper == 0 {
+		return "Unknown"
+	}
+
+	if lower == upper {
+		return FormatNumberReadable(lower)
+	}
+
+	return fmt.Sprintf("%s - %s", FormatNumberReadable(lower), FormatNumberReadable(upper))
+}
+
 // GetAudienceSize retrieves the estimated audience size for a specific interest
 func (a *AudienceAnalyzer) GetAudienceSize(interestID string) (int64, error) {
 	// Construct the targeting spec for the interest
@@ -307,7 +350,7 @@ func (a *AudienceAnalyzer) GetAudienceSize(interestID string) (int64, error) {
 		return 0, fmt.Errorf("no reach estimate data returned")
 	}
 
-	fmt.Printf("Audience size for %s: %v - %v\n", interestID, estimateResp.Data[0].LowerBound, estimateResp.Data[0].UpperBound)
+	fmt.Printf("Audience size for %s: %s\n", interestID, FormatAudienceRange(estimateResp.Data[0].LowerBound, estimateResp.Data[0].UpperBound))
 
 	// Return the estimated audience size
 	return estimateResp.Data[0].Users, nil
