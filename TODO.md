@@ -32,10 +32,11 @@
 - [x] Add campaign update functionality to modify existing campaigns
 - [x] Implement status change operations (pause/resume/archive)
 - [x] Duplicate campaign with all internals by id
-- [x] On duplicate the budget is 100 times higher than it should be.
+- [x] Fix: on duplicate the budget is 100 times higher than it should be
 - [ ] Create campaign to promote a post from the page
 - [ ] Create bulk update capability for managing multiple campaigns
 - [ ] Develop scheduling system for automated campaign updates
+- [ ] Move list,create,update,duplicate,export as a campaign subcommand
 
 ## Performance Tracking
 - [x] Develop metrics collection system
@@ -75,6 +76,7 @@
 - [x] Create test budget allocation system
 - [x] Implement automatic CPM bidding integration
 - [x] Build API rate limiting with exponential backoff
+- [x] Export campaign like optimization.yaml
 - [ ] Develop statistics analysis system (impressions, clicks, costs)
 - [ ] Implement data threshold validation (min 1000 impressions)
 - [ ] Create analytics module for campaign performance

@@ -68,6 +68,12 @@ func main() {
 			os.Exit(1)
 		}
 		exportCampaign(cfg, os.Args[2], os.Args[3:])
+	case "exportyaml":
+		if len(os.Args) < 3 {
+			fmt.Println("Missing campaign ID. Use: fbads exportyaml <campaign_id> [output_file] [options]")
+			os.Exit(1)
+		}
+		exportCampaignYAML(cfg, os.Args[2], os.Args[3:])
 	case "pages":
 		listPages(cfg)
 	case "audience":
@@ -1366,6 +1372,70 @@ func exportCampaign(cfg *config.Config, campaignID string, args []string) {
 	fmt.Printf("Campaign exported successfully to: %s\n", outputFile)
 }
 
+// exportCampaignYAML exports a campaign by ID to a YAML file for optimization
+func exportCampaignYAML(cfg *config.Config, campaignID string, args []string) {
+	// Set up default export config
+	exporterConfig := optimization.DefaultExporterConfig()
+	
+	// Determine output file name
+	outputFile := campaignID + ".yaml"
+	
+	// Parse arguments
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--budget" && i+1 < len(args) {
+			fmt.Sscanf(args[i+1], "%f", &exporterConfig.TotalBudget)
+			i++
+		} else if args[i] == "--test-percent" && i+1 < len(args) {
+			fmt.Sscanf(args[i+1], "%f", &exporterConfig.TestBudgetPercentage)
+			i++
+		} else if args[i] == "--max-cpm" && i+1 < len(args) {
+			fmt.Sscanf(args[i+1], "%f", &exporterConfig.MaxCPM)
+			i++
+		} else if !strings.HasPrefix(args[i], "--") && i == 0 {
+			// First non-flag argument is the output file
+			outputFile = args[i]
+		}
+	}
+	
+	// Set output path
+	exporterConfig.OutputPath = outputFile
+	
+	// Create auth client
+	authClient := auth.NewFacebookAuth(
+		cfg.AppID,
+		cfg.AppSecret,
+		cfg.AccessToken,
+		cfg.APIVersion,
+	)
+
+	// Create API client
+	client := api.NewClient(authClient, cfg.AccountID)
+
+	fmt.Printf("Fetching campaign details for ID: %s\n", campaignID)
+
+	// Get campaign details
+	details, err := client.GetCampaignDetails(campaignID)
+	if err != nil {
+		fmt.Printf("Error fetching campaign details: %v\n", err)
+		os.Exit(1)
+	}
+	
+	// Create exporter
+	exporter := optimization.NewExporter(exporterConfig)
+	
+	// Export campaign to YAML
+	if err := exporter.ExportCampaign(details); err != nil {
+		fmt.Printf("Error exporting campaign to YAML: %v\n", err)
+		os.Exit(1)
+	}
+	
+	fmt.Printf("Campaign exported to YAML for optimization: %s\n", outputFile)
+	fmt.Printf("Configuration: Total Budget: $%.2f, Test Budget: %.1f%%, Max CPM: $%.2f\n", 
+		exporterConfig.TotalBudget, 
+		exporterConfig.TestBudgetPercentage,
+		exporterConfig.MaxCPM)
+}
+
 // listPages lists all Facebook Pages accessible with the current access token
 func listPages(cfg *config.Config) {
 	// Parse flags
@@ -1997,7 +2067,13 @@ func printUsage() {
 	fmt.Println("    --dry-run, -d          Preview without creating the duplicate")
 	fmt.Println("")
 	fmt.Println("  export <campaign_id> [output_file]")
-	fmt.Println("                           Export campaign to configuration file")
+	fmt.Println("                           Export campaign to JSON configuration file")
+	fmt.Println("")
+	fmt.Println("  exportyaml <campaign_id> [output_file]")
+	fmt.Println("                           Export campaign to YAML for optimization testing")
+	fmt.Println("    --budget <amount>      Set the total budget for testing (default: 1000.00)")
+	fmt.Println("    --test-percent <pct>   Set the test budget percentage (default: 20)")
+	fmt.Println("    --max-cpm <amount>     Set the maximum CPM for bidding (default: 15.00)")
 	fmt.Println("")
 	fmt.Println("  pages                    List Facebook Pages available for the API token")
 	fmt.Println("")
