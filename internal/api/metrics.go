@@ -189,7 +189,14 @@ func (m *MetricsCollector) CollectCampaignMetrics(request InsightsRequest) ([]ut
 
 // StoreMetrics stores collected metrics to a file or database
 func (m *MetricsCollector) StoreMetrics(performances []utils.CampaignPerformance, filePath string) error {
-	// TODO: Implement metrics storage
+	// Create a statistics manager with file storage
+	statsManager := NewStatisticsManager(m, StorageTypeFile, filepath.Dir(filePath))
+	
+	// Store the metrics
+	if err := statsManager.StoreStatistics(performances); err != nil {
+		return fmt.Errorf("error storing metrics: %w", err)
+	}
+	
 	return nil
 }
 

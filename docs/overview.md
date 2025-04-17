@@ -51,10 +51,44 @@ Create a comprehensive Go CLI application for Facebook Ads management that enabl
 5. Implement the API client following best practices
 6. Set up audience data extraction and analysis pipeline
 
+## Core Features
+
+### Performance Analytics and Statistics
+- Comprehensive statistics collection system for impressions, clicks, and costs
+- Daily performance data gathering and persistent storage 
+- Trend analysis with statistical calculations (min, max, avg, std dev)
+- Campaign-specific and aggregate performance metrics
+- CSV export for further analysis in spreadsheet applications
+- Visualization of campaign performance over time
+- Automated data collection and reporting
+
+### Campaign Management
+- Creating campaigns from JSON configuration files
+- Updating existing campaigns with new parameters
+- Duplicating campaigns with customized settings
+- Exporting campaigns to JSON and YAML formats
+- Pausing, resuming, and archiving campaigns
+- Bulk management of multiple campaigns
+
+### Audience Targeting and Analysis
+- Searching and filtering audience segments
+- Analyzing audience performance metrics
+- Exporting audience data for further analysis
+- Creating optimized targeting combinations
+- Testing multiple audience segments with minimal budgets
+
+### Campaign Optimization
+- YAML-based configuration for optimization testing
+- Automatic test campaign generation for creative/audience combinations
+- Budget optimization based on performance metrics
+- CPM adjustment based on conversion data
+- Automated underperforming campaign deactivation
+
 ## Deliverables
 - Go source code for the CLI application
-- Documentation for setup and usage
-- Sample configuration files
-- Performance tracking and reporting capabilities
+- Comprehensive documentation for setup and usage
+- Sample configuration files for campaigns and optimization
+- Performance tracking and statistical analysis system
 - Audience analysis toolkit with data visualization
 - Command reference for all CLI operations
+- Reporting and data export capabilities

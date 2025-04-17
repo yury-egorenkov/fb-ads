@@ -11,6 +11,10 @@ A robust, feature-rich command-line interface for Facebook Ads management built 
 - List all ads campaigns
 - Create campaigns from JSON and YAML configuration files
 - Audience targeting and performance analytics for better targeting
+- Comprehensive statistics collection and analysis system
+- Track campaign impressions, clicks, costs, and conversions over time
+- Calculate performance trends and statistical measures
+- Export performance data to CSV for external analysis
 - Systematic campaign optimization through test combinations
 - Export existing campaigns to optimization YAML format
 - Automatic budget allocation and CPM bidding optimization
@@ -81,6 +85,7 @@ Available commands:
 - `update` - Update an existing campaign 
 - `duplicate` - Duplicate a campaign with all its internals
 - `export` - Export campaign to configuration file
+- `stats` - Collect and analyze campaign statistics
 - `audience` - Analyze audience data
 - `report` - Generate performance reports
 - `dashboard` - Launch the web dashboard
@@ -93,6 +98,7 @@ See the docs directory for detailed documentation on each command:
 - [Duplicating Campaigns](docs/campaign_duplicate.md) - Detailed guide on cloning campaigns
 - [Creating Campaigns](docs/campaign_create.md) - How to create campaigns from configuration
 - [Campaign Optimization](docs/campaign_optimization.md) - Systematic testing and optimization of ad campaigns
+- [Statistics Analysis](docs/statistics_analysis.md) - Analyzing campaign performance metrics
 - [API Endpoints](docs/api_endpoints.md) - Information on the Facebook API endpoints used
 
 ## Examples
@@ -119,6 +125,25 @@ fbads duplicate 123456789 --name="New Campaign" --budget-factor=1.5
 
 ```
 fbads update --id=123456789 --status=PAUSED --name="Updated Campaign Name"
+```
+
+### Collecting Campaign Statistics
+
+```
+fbads stats collect --days 14
+```
+
+### Analyzing Campaign Statistics
+
+```
+fbads stats analyze --format table
+fbads stats analyze --campaign 123456789 --start 2025-01-01 --end 2025-01-31
+```
+
+### Exporting Statistics to CSV
+
+```
+fbads stats export --output campaign_stats.csv
 ```
 
 ### Analyzing Audience Data

@@ -1,3 +1,4 @@
+// Package optimization provides campaign optimization functionality
 package optimization
 
 import (
@@ -182,6 +183,10 @@ func (g *CampaignGenerator) ConvertToFacebookCampaign(combination CampaignCombin
 	timestamp := time.Now().Format("20060102-150405")
 	campaignName := fmt.Sprintf("%s (%s)", combination.Name, timestamp)
 	
+	// Calculate start and end times for lifetime budget
+	startTime := time.Now()
+	endTime := startTime.Add(7 * 24 * time.Hour) // End time is 7 days from now
+	
 	// Create base campaign config
 	campaign := &models.CampaignConfig{
 		Name:           campaignName,
@@ -190,6 +195,8 @@ func (g *CampaignGenerator) ConvertToFacebookCampaign(combination CampaignCombin
 		BuyingType:     "AUCTION",
 		BidStrategy:    "LOWEST_COST_WITH_BID_CAP",
 		LifetimeBudget: combination.Budget,
+		StartTime:      startTime.Format(time.RFC3339),
+		EndTime:        endTime.Format(time.RFC3339), // Required for lifetime budget
 		AdSets:         []models.AdSetConfig{},
 		Ads:            []models.AdConfig{},
 	}
@@ -201,6 +208,8 @@ func (g *CampaignGenerator) ConvertToFacebookCampaign(combination CampaignCombin
 		OptimizationGoal: "REACH",
 		BillingEvent:     "IMPRESSIONS",
 		BidAmount:        combination.BidAmount,
+		StartTime:        startTime.Format(time.RFC3339),
+		EndTime:          endTime.Format(time.RFC3339), // Required for lifetime budget
 		Targeting:        make(map[string]interface{}),
 	}
 	
@@ -226,6 +235,16 @@ func (g *CampaignGenerator) ConvertToFacebookCampaign(combination CampaignCombin
 			// Use all positions if not specified
 			adSet.Targeting["facebook_positions"] = []string{"feed"}
 		}
+		
+		// Add required location targeting (required by Facebook API)
+		adSet.Targeting["geo_locations"] = map[string]interface{}{
+			"countries": []string{"US"},
+			"location_types": []string{"home", "recent"},
+		}
+		
+		// Add minimal age targeting (required by Facebook API)
+		adSet.Targeting["age_min"] = 18
+		adSet.Targeting["age_max"] = 65
 	}
 	
 	campaign.AdSets = append(campaign.AdSets, adSet)

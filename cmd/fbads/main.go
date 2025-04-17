@@ -78,6 +78,12 @@ func main() {
 		listPages(cfg)
 	case "audience":
 		analyzeAudience(cfg)
+	case "stats":
+		if len(os.Args) < 3 {
+			fmt.Println("Missing stats subcommand. Use: fbads stats [collect|analyze|export]")
+			os.Exit(1)
+		}
+		handleStatistics(cfg, os.Args[2], os.Args[3:])
 	case "report":
 		if len(os.Args) < 3 {
 			fmt.Println("Missing report type. Use: fbads report [daily|weekly|monthly|custom]")
@@ -2037,6 +2043,449 @@ func duplicateCampaign(cfg *config.Config, campaignID string, args []string) {
 	fmt.Println("Campaign duplicated successfully!")
 }
 
+// handleStatistics processes statistics subcommands
+func handleStatistics(cfg *config.Config, subCmd string, args []string) {
+	// Create auth client
+	authClient := auth.NewFacebookAuth(
+		cfg.AppID,
+		cfg.AppSecret,
+		cfg.AccessToken,
+		cfg.APIVersion,
+	)
+
+	// Create metrics collector
+	metricsCollector := api.NewMetricsCollector(authClient, cfg.AccountID)
+
+	// Set default storage directory
+	statsDir := filepath.Join(cfg.ConfigDir, "stats")
+
+	// Create statistics manager
+	statsManager := api.NewStatisticsManager(metricsCollector, api.StorageTypeFile, statsDir)
+
+	// Parse common flags
+	var (
+		startDateStr string
+		endDateStr   string
+		campaignID   string
+		outputFile   string
+		days         int = 30 // Default to 30 days
+		format       string = "json" // Default format
+	)
+
+	// Process flags
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--start", "-s":
+			if i+1 < len(args) {
+				startDateStr = args[i+1]
+				i++
+			}
+		case "--end", "-e":
+			if i+1 < len(args) {
+				endDateStr = args[i+1]
+				i++
+			}
+		case "--days", "-d":
+			if i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &days)
+				i++
+			}
+		case "--campaign", "-c":
+			if i+1 < len(args) {
+				campaignID = args[i+1]
+				i++
+			}
+		case "--output", "-o":
+			if i+1 < len(args) {
+				outputFile = args[i+1]
+				i++
+			}
+		case "--format", "-f":
+			if i+1 < len(args) {
+				format = args[i+1]
+				i++
+			}
+		}
+	}
+
+	// Set default date range if not specified
+	var startDate, endDate time.Time
+	var err error
+
+	if startDateStr == "" {
+		// Default start date (30 days ago or as specified by --days)
+		startDate = time.Now().AddDate(0, 0, -days)
+	} else {
+		startDate, err = time.Parse("2006-01-02", startDateStr)
+		if err != nil {
+			fmt.Printf("Invalid start date format: %v\n", err)
+			fmt.Println("Date format should be YYYY-MM-DD")
+			os.Exit(1)
+		}
+	}
+
+	if endDateStr == "" {
+		// Default end date (yesterday)
+		endDate = time.Now().AddDate(0, 0, -1)
+	} else {
+		endDate, err = time.Parse("2006-01-02", endDateStr)
+		if err != nil {
+			fmt.Printf("Invalid end date format: %v\n", err)
+			fmt.Println("Date format should be YYYY-MM-DD")
+			os.Exit(1)
+		}
+	}
+
+	// Process subcommand
+	switch subCmd {
+	case "collect":
+		collectStatistics(statsManager, startDate, endDate)
+	case "analyze":
+		analyzeStatistics(statsManager, startDate, endDate, campaignID, format)
+	case "export":
+		if outputFile == "" {
+			// Default output file name
+			outputFile = fmt.Sprintf("stats_export_%s_to_%s.csv", 
+				startDate.Format("2006-01-02"), 
+				endDate.Format("2006-01-02"))
+		}
+		exportStatistics(statsManager, startDate, endDate, outputFile)
+	default:
+		fmt.Printf("Unknown stats subcommand: %s\n", subCmd)
+		fmt.Println("Available subcommands: collect, analyze, export")
+		os.Exit(1)
+	}
+}
+
+// collectStatistics collects metrics for the given date range
+func collectStatistics(statsManager *api.StatisticsManager, startDate, endDate time.Time) {
+	fmt.Printf("Collecting campaign statistics from %s to %s...\n", 
+		startDate.Format("2006-01-02"), 
+		endDate.Format("2006-01-02"))
+
+	// Process one day at a time to get daily statistics
+	current := startDate
+	var collectErrors []string
+
+	for !current.After(endDate) {
+		// Create time range for the day
+		timeRange := api.TimeRange{
+			Since: current.Format("2006-01-02"),
+			Until: current.Format("2006-01-02"),
+		}
+
+		fmt.Printf("Collecting data for %s...\n", current.Format("2006-01-02"))
+		err := statsManager.CollectAndStoreStatistics(timeRange)
+		if err != nil {
+			fmt.Printf("Error collecting data for %s: %v\n", current.Format("2006-01-02"), err)
+			collectErrors = append(collectErrors, fmt.Sprintf("%s: %v", current.Format("2006-01-02"), err))
+		}
+
+		// Move to next day
+		current = current.AddDate(0, 0, 1)
+	}
+
+	if len(collectErrors) > 0 {
+		fmt.Println("\nWarning: Some data collection operations failed:")
+		for _, errMsg := range collectErrors {
+			fmt.Printf("  - %s\n", errMsg)
+		}
+		fmt.Println("\nPartial data may still be available for analysis.")
+	} else {
+		fmt.Println("\nStatistics collection completed successfully!")
+	}
+}
+
+// analyzeStatistics analyzes campaign performance for the given date range
+func analyzeStatistics(statsManager *api.StatisticsManager, startDate, endDate time.Time, campaignID, format string) {
+	if campaignID != "" {
+		fmt.Printf("Analyzing statistics for campaign %s from %s to %s...\n", 
+			campaignID, 
+			startDate.Format("2006-01-02"), 
+			endDate.Format("2006-01-02"))
+		
+		// Get campaign-specific statistics
+		stats, err := statsManager.GetCampaignStatistics(campaignID, startDate, endDate)
+		if err != nil {
+			fmt.Printf("Error analyzing campaign statistics: %v\n", err)
+			os.Exit(1)
+		}
+		
+		if len(stats) == 0 {
+			fmt.Println("No statistics found for the specified campaign and date range.")
+			return
+		}
+		
+		// Display statistics based on format
+		switch format {
+		case "json":
+			displayStatisticsJSON(stats)
+		case "table":
+			displayCampaignStatisticsTable(stats)
+		default:
+			fmt.Printf("Unsupported format: %s. Using table format.\n", format)
+			displayCampaignStatisticsTable(stats)
+		}
+		
+	} else {
+		fmt.Printf("Analyzing statistics for all campaigns from %s to %s...\n", 
+			startDate.Format("2006-01-02"), 
+			endDate.Format("2006-01-02"))
+		
+		// Perform full statistical analysis
+		analysis, err := statsManager.AnalyzeStatistics(startDate, endDate)
+		if err != nil {
+			fmt.Printf("Error analyzing statistics: %v\n", err)
+			os.Exit(1)
+		}
+		
+		if len(analysis.CampaignStats) == 0 {
+			fmt.Println("No statistics found for the specified date range.")
+			return
+		}
+		
+		// Display statistics based on format
+		switch format {
+		case "json":
+			displayAnalysisJSON(analysis)
+		case "table":
+			displayAnalysisTable(analysis)
+		default:
+			fmt.Printf("Unsupported format: %s. Using table format.\n", format)
+			displayAnalysisTable(analysis)
+		}
+	}
+}
+
+// displayStatisticsJSON displays campaign performance data in JSON format
+func displayStatisticsJSON(stats []utils.CampaignPerformance) {
+	data, err := json.MarshalIndent(stats, "", "  ")
+	if err != nil {
+		fmt.Printf("Error encoding statistics to JSON: %v\n", err)
+		return
+	}
+	
+	fmt.Println(string(data))
+}
+
+// displayCampaignStatisticsTable displays campaign performance data in a table format
+func displayCampaignStatisticsTable(stats []utils.CampaignPerformance) {
+	if len(stats) == 0 {
+		fmt.Println("No statistics available.")
+		return
+	}
+	
+	// Print header
+	fmt.Printf("%-10s | %-10s | %-10s | %-8s | %-6s | %-8s | %-8s | %-8s | %-8s\n",
+		"DATE", "IMPRESSIONS", "CLICKS", "CTR (%)", "SPEND", "CPM", "CPC", "CONV", "ROAS")
+	
+	// Print separator
+	fmt.Printf("%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s\n",
+		strings.Repeat("-", 10),
+		strings.Repeat("-", 10),
+		strings.Repeat("-", 10),
+		strings.Repeat("-", 8),
+		strings.Repeat("-", 6),
+		strings.Repeat("-", 8),
+		strings.Repeat("-", 8),
+		strings.Repeat("-", 8),
+		strings.Repeat("-", 8))
+	
+	// Print data rows
+	totalImpressions := 0
+	totalClicks := 0
+	totalSpend := 0.0
+	totalConversions := 0
+	
+	// Sort by date
+	sortPerformancesByDate(stats)
+	
+	for _, stat := range stats {
+		fmt.Printf("%-10s | %-10d | %-10d | %-8.2f | %-6.2f | %-8.2f | %-8.2f | %-8d | %-8.2f\n",
+			stat.LastUpdated.Format("2006-01-02"),
+			stat.Impressions,
+			stat.Clicks,
+			stat.CTR,
+			stat.Spend,
+			stat.CPM,
+			stat.CPC,
+			stat.Conversions,
+			stat.ROAS)
+		
+		totalImpressions += stat.Impressions
+		totalClicks += stat.Clicks
+		totalSpend += stat.Spend
+		totalConversions += stat.Conversions
+	}
+	
+	// Print totals
+	fmt.Printf("%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s\n",
+		strings.Repeat("-", 10),
+		strings.Repeat("-", 10),
+		strings.Repeat("-", 10),
+		strings.Repeat("-", 8),
+		strings.Repeat("-", 6),
+		strings.Repeat("-", 8),
+		strings.Repeat("-", 8),
+		strings.Repeat("-", 8),
+		strings.Repeat("-", 8))
+	
+	// Calculate averages for totals
+	var avgCTR, avgCPM, avgCPC, avgROAS float64
+	
+	if totalImpressions > 0 {
+		avgCTR = float64(totalClicks) / float64(totalImpressions) * 100
+		avgCPM = totalSpend / float64(totalImpressions) * 1000
+	}
+	
+	if totalClicks > 0 {
+		avgCPC = totalSpend / float64(totalClicks)
+	}
+	
+	if totalSpend > 0 && totalConversions > 0 {
+		// Simplified ROAS calculation
+		avgOrderValue := 50.0 // Example value, same as in the analyzer
+		avgROAS = float64(totalConversions) * avgOrderValue / totalSpend
+	}
+	
+	fmt.Printf("%-10s | %-10d | %-10d | %-8.2f | %-6.2f | %-8.2f | %-8.2f | %-8d | %-8.2f\n",
+		"TOTAL",
+		totalImpressions,
+		totalClicks,
+		avgCTR,
+		totalSpend,
+		avgCPM,
+		avgCPC,
+		totalConversions,
+		avgROAS)
+}
+
+// sortPerformancesByDate sorts campaign performances by date
+func sortPerformancesByDate(performances []utils.CampaignPerformance) {
+	for i := 0; i < len(performances); i++ {
+		for j := i + 1; j < len(performances); j++ {
+			if performances[j].LastUpdated.Before(performances[i].LastUpdated) {
+				performances[i], performances[j] = performances[j], performances[i]
+			}
+		}
+	}
+}
+
+// displayAnalysisJSON displays analysis results in JSON format
+func displayAnalysisJSON(analysis *api.AggregateStatistics) {
+	data, err := json.MarshalIndent(analysis, "", "  ")
+	if err != nil {
+		fmt.Printf("Error encoding analysis to JSON: %v\n", err)
+		return
+	}
+	
+	fmt.Println(string(data))
+}
+
+// displayAnalysisTable displays analysis results in table format
+func displayAnalysisTable(analysis *api.AggregateStatistics) {
+	// Print summary header
+	fmt.Println("Campaign Performance Summary")
+	fmt.Printf("Date Range: %s to %s\n\n", 
+		analysis.StartDate.Format("2006-01-02"), 
+		analysis.EndDate.Format("2006-01-02"))
+	
+	// Print overall statistics
+	fmt.Printf("Total Impressions: %d\n", analysis.TotalImpressions)
+	fmt.Printf("Total Clicks: %d\n", analysis.TotalClicks)
+	fmt.Printf("Total Spend: $%.2f\n", analysis.TotalSpend)
+	fmt.Printf("Total Conversions: %d\n", analysis.TotalConversions)
+	fmt.Printf("Average CTR: %.2f%%\n", analysis.AvgCTR)
+	fmt.Printf("Average CPM: $%.2f\n", analysis.AvgCPM)
+	fmt.Printf("Average CPC: $%.2f\n", analysis.AvgCPC)
+	if analysis.TotalConversions > 0 {
+		fmt.Printf("Average CPA: $%.2f\n", analysis.AvgCPA)
+	}
+	
+	// Print trend summary if available
+	if analysis.TrendImpressions != nil && len(analysis.TrendImpressions.Values) > 1 {
+		fmt.Printf("\nTrends (% change over period):\n")
+		
+		if analysis.TrendImpressions != nil {
+			fmt.Printf("  Impressions: %.1f%%\n", analysis.TrendImpressions.Change)
+		}
+		if analysis.TrendClicks != nil {
+			fmt.Printf("  Clicks: %.1f%%\n", analysis.TrendClicks.Change)
+		}
+		if analysis.TrendCTR != nil {
+			fmt.Printf("  CTR: %.1f%%\n", analysis.TrendCTR.Change)
+		}
+		if analysis.TrendCPM != nil {
+			fmt.Printf("  CPM: %.1f%%\n", analysis.TrendCPM.Change)
+		}
+		if analysis.TrendConversions != nil {
+			fmt.Printf("  Conversions: %.1f%%\n", analysis.TrendConversions.Change)
+		}
+	}
+	
+	// Print campaign-specific statistics
+	fmt.Printf("\nCampaign Performance Breakdown:\n")
+	fmt.Printf("%-20s | %-10s | %-10s | %-8s | %-8s | %-8s | %-8s | %-8s\n",
+		"CAMPAIGN", "IMPRESSIONS", "CLICKS", "CTR (%)", "SPEND", "CPM", "CPC", "CONV")
+	
+	// Print separator
+	fmt.Printf("%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s-+-%s\n",
+		strings.Repeat("-", 20),
+		strings.Repeat("-", 10),
+		strings.Repeat("-", 10),
+		strings.Repeat("-", 8),
+		strings.Repeat("-", 8),
+		strings.Repeat("-", 8),
+		strings.Repeat("-", 8),
+		strings.Repeat("-", 8))
+	
+	// Print data rows
+	for _, campaign := range analysis.CampaignStats {
+		// Truncate campaign name if too long
+		name := campaign.Name
+		if len(name) > 17 {
+			name = name[:14] + "..."
+		}
+		
+		fmt.Printf("%-20s | %-10d | %-10d | %-8.2f | %-8.2f | %-8.2f | %-8.2f | %-8d\n",
+			name,
+			campaign.TotalImpressions,
+			campaign.TotalClicks,
+			campaign.AvgCTR,
+			campaign.TotalSpend,
+			campaign.AvgCPM,
+			campaign.AvgCPC,
+			campaign.TotalConversions)
+	}
+}
+
+// exportStatistics exports campaign statistics to a CSV file
+func exportStatistics(statsManager *api.StatisticsManager, startDate, endDate time.Time, outputFile string) {
+	fmt.Printf("Exporting statistics from %s to %s...\n",
+		startDate.Format("2006-01-02"), 
+		endDate.Format("2006-01-02"))
+	
+	// Analyze statistics
+	analysis, err := statsManager.AnalyzeStatistics(startDate, endDate)
+	if err != nil {
+		fmt.Printf("Error analyzing statistics: %v\n", err)
+		os.Exit(1)
+	}
+	
+	if len(analysis.CampaignStats) == 0 {
+		fmt.Println("No statistics found for the specified date range.")
+		return
+	}
+	
+	// Export to CSV
+	if err := statsManager.ExportStatisticsCSV(analysis, outputFile); err != nil {
+		fmt.Printf("Error exporting statistics to CSV: %v\n", err)
+		os.Exit(1)
+	}
+	
+	fmt.Printf("Statistics exported successfully to: %s\n", outputFile)
+}
+
 func printUsage() {
 	fmt.Println("Usage: fbads <command> [arguments]")
 	fmt.Println("\nAvailable commands:")
@@ -2076,6 +2525,23 @@ func printUsage() {
 	fmt.Println("    --max-cpm <amount>     Set the maximum CPM for bidding (default: 15.00)")
 	fmt.Println("")
 	fmt.Println("  pages                    List Facebook Pages available for the API token")
+	fmt.Println("")
+	fmt.Println("  stats <subcommand> [args] Campaign statistics analysis")
+	fmt.Println("    - collect              Collect performance statistics")
+	fmt.Println("      --start, -s <date>    Start date (YYYY-MM-DD)")
+	fmt.Println("      --end, -e <date>      End date (YYYY-MM-DD)")
+	fmt.Println("      --days, -d <num>      Number of days back from today (default: 30)")
+	fmt.Println("    - analyze              Analyze campaign statistics")
+	fmt.Println("      --start, -s <date>    Start date (YYYY-MM-DD)")
+	fmt.Println("      --end, -e <date>      End date (YYYY-MM-DD)")
+	fmt.Println("      --days, -d <num>      Number of days back from today (default: 30)")
+	fmt.Println("      --campaign, -c <id>   Specific campaign to analyze (optional)")
+	fmt.Println("      --format, -f <fmt>    Output format: json or table (default: json)")
+	fmt.Println("    - export               Export campaign statistics to CSV")
+	fmt.Println("      --start, -s <date>    Start date (YYYY-MM-DD)")
+	fmt.Println("      --end, -e <date>      End date (YYYY-MM-DD)")
+	fmt.Println("      --days, -d <num>      Number of days back from today (default: 30)")
+	fmt.Println("      --output, -o <file>   Output file path (defaults to stats_export_<date>.csv)")
 	fmt.Println("")
 	fmt.Println("  audience <subcommand> [args]")
 	fmt.Println("                           Audience targeting and analysis commands")
