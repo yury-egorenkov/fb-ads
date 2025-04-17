@@ -170,6 +170,7 @@ fbads optimize create <yaml_file> [options]
 ```
 
 Options:
+- `--template <file>`: Use a JSON campaign file as template
 - `--limit <num>`: Limit the number of test combinations to create
 - `--batch-size <num>`: Number of campaigns to create in each batch (default: 3)
 - `--priority <type>`: Priority for combinations: audience or placement (default: audience)
@@ -180,14 +181,35 @@ Example:
 fbads optimize create my_campaign.yaml --limit 10 --batch-size 5 --priority audience
 ```
 
+Using a template campaign:
+```bash
+fbads optimize create my_campaign.yaml --template examples/works.json
+```
+
 This will:
 1. Parse the YAML configuration
-2. Generate all possible combinations of creatives with audiences and placements
-3. Calculate the budget for each test campaign
-4. Create the campaigns in batches with rate limiting
-5. Show progress and results
+2. If a template is provided, use it as the base campaign structure for all test campaigns
+3. Generate all possible combinations of creatives with audiences and placements
+4. Calculate the budget for each test campaign
+5. Create the campaigns in batches with rate limiting
+6. Show progress and results
 
 Use the `--dry-run` flag to preview the campaigns that would be created without actually creating them.
+
+#### Using Campaign Templates
+
+The template option allows you to use an existing campaign JSON file as a base for all test campaigns. This is useful when you want to:
+
+1. Maintain specific campaign settings (objective, buying type, bid strategy)
+2. Keep advanced targeting options that aren't specified in the YAML file
+3. Use a campaign structure that has already been successful
+4. Ensure consistency across all test campaigns
+
+When using a template, the system will:
+- Preserve the campaign structure and settings from the template
+- Override the campaign name, status, and budget based on the test combination
+- Apply the targeting variations from the YAML file to the template's ad sets
+- Apply the creative variations from the YAML file to the template's ads
 
 ### Updating Campaign CPM Based on Performance
 
@@ -261,4 +283,6 @@ The system implements exponential backoff with jitter for API rate limiting:
 
 9. **Review before committing**: Always use the `--dry-run` flag first to preview campaigns before creating them.
 
-10. **Export existing successful campaigns**: Use the `exportyaml` command to start from campaigns that have already shown some success.
+10. **Use campaign templates**: Leverage the `--template` option with a proven campaign structure to maintain consistency and settings across test campaigns.
+
+11. **Export existing successful campaigns**: Use the `exportyaml` command to start from campaigns that have already shown some success.
