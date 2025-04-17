@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -1006,12 +1007,15 @@ func validateYAMLConfig(cfg *config.Config, args []string) {
 // createTestCampaigns creates test campaigns from a YAML configuration
 func createTestCampaigns(cfg *config.Config, args []string) {
 	if len(args) < 1 {
-		fmt.Println("Missing YAML file path. Use: fbads optimize create <yaml_file> [--limit=N]")
+		fmt.Println("Missing YAML file path. Use: fbads optimize create <yaml_file> [--limit=N] [--batch-size=N] [--dry-run]")
 		os.Exit(1)
 	}
 
 	yamlPath := args[0]
 	limit := 0
+	batchSize := 3
+	dryRun := false
+	priority := "audience"
 
 	// Parse optional flags
 	for i := 1; i < len(args); i++ {
@@ -1020,6 +1024,18 @@ func createTestCampaigns(cfg *config.Config, args []string) {
 			fmt.Sscanf(strings.TrimPrefix(args[i], "--limit="), "%d", &limit)
 		case args[i] == "--limit" && i+1 < len(args):
 			fmt.Sscanf(args[i+1], "%d", &limit)
+			i++
+		case strings.HasPrefix(args[i], "--batch-size="):
+			fmt.Sscanf(strings.TrimPrefix(args[i], "--batch-size="), "%d", &batchSize)
+		case args[i] == "--batch-size" && i+1 < len(args):
+			fmt.Sscanf(args[i+1], "%d", &batchSize)
+			i++
+		case args[i] == "--dry-run" || args[i] == "-d":
+			dryRun = true
+		case strings.HasPrefix(args[i], "--priority="):
+			priority = strings.TrimPrefix(args[i], "--priority=")
+		case args[i] == "--priority" && i+1 < len(args):
+			priority = args[i+1]
 			i++
 		}
 	}
@@ -1048,31 +1064,147 @@ func createTestCampaigns(cfg *config.Config, args []string) {
 		os.Exit(1)
 	}
 	
-	// Calculate total number of test campaigns
-	totalCombinations := len(campaignCfg.Creatives) * 
-		(len(campaignCfg.TargetingOptions.Audiences) + len(campaignCfg.TargetingOptions.Placements))
+	// Create campaign generator
+	generator := optimization.NewCampaignGenerator(campaignCfg, budgetCalc)
+	generator.SetLimit(limit)
+	generator.SetMaxBatchSize(batchSize)
+	generator.SetPriority(priority)
 	
-	// Apply limit if specified
-	actualCombinations := totalCombinations
-	if limit > 0 && limit < totalCombinations {
-		actualCombinations = limit
-		fmt.Printf("Limiting to %d of %d possible test combinations\n", limit, totalCombinations)
-	} else {
-		fmt.Printf("Creating all %d test combinations\n", totalCombinations)
+	// Generate all combinations
+	if err := generator.GenerateAllCombinations(); err != nil {
+		fmt.Printf("Error generating campaign combinations: %v\n", err)
+		os.Exit(1)
 	}
 	
-	// Calculate budget per campaign
-	budgetPerCampaign, err := budgetCalc.GetBudgetPerCampaign(actualCombinations)
+	// Display generation summary
+	totalCombinations := generator.TotalCombinations()
+	totalBatches := generator.TotalBatches()
+	
+	if limit > 0 && limit < totalCombinations {
+		fmt.Printf("Generated %d combinations (limited from %d possible)\n", 
+			totalCombinations, len(campaignCfg.Creatives) * 
+			(len(campaignCfg.TargetingOptions.Audiences) + len(campaignCfg.TargetingOptions.Placements)))
+	} else {
+		fmt.Printf("Generated %d combinations\n", totalCombinations)
+	}
+	fmt.Printf("Batch size: %d, Total batches: %d\n", batchSize, totalBatches)
+	
+	// Get budget per campaign
+	budgetPerCampaign, err := budgetCalc.GetBudgetPerCampaign(totalCombinations)
 	if err != nil {
 		fmt.Printf("Error calculating budget per campaign: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("Budget per test campaign: $%.2f\n", budgetPerCampaign)
 	
-	// TODO: Create campaign combinations and API calls for actual campaign creation
+	// Create rate limiter for Facebook API calls
+	rateLimiter := optimization.NewRateLimiter()
+	rateLimiter.SetRequestInterval(500 * time.Millisecond) // Facebook's rate limit is relatively low
 	
-	fmt.Println("\nNote: Campaign creation functionality will be implemented in the next version.")
-	fmt.Println("This command currently only validates the configuration and calculates budgets.")
+	// Process all batches
+	if dryRun {
+		fmt.Println("\nDry run mode - showing first batch without creating campaigns:")
+		
+		// Just get the first batch for preview
+		batch := generator.GetNextBatch()
+		for i, combination := range batch {
+			facebookCampaign := generator.ConvertToFacebookCampaign(combination)
+			fmt.Printf("\nCampaign %d: %s\n", i+1, facebookCampaign.Name)
+			fmt.Printf("  Creative: %s\n", combination.Creative.Title)
+			if combination.TargetingType == "audience" {
+				fmt.Printf("  Audience: %s\n", combination.AudienceName)
+			} else {
+				fmt.Printf("  Placement: %s (%s)\n", combination.PlacementName, combination.PlacementParams)
+			}
+			fmt.Printf("  Budget: $%.2f\n", combination.Budget)
+			fmt.Printf("  CPM Bid: $%.2f\n", combination.BidAmount)
+		}
+		
+		fmt.Printf("\nRemaining batches: %d\n", totalBatches-1)
+		fmt.Println("\nNo campaigns were created (dry run mode)")
+	} else {
+		// Create auth client
+		authClient := auth.NewFacebookAuth(
+			cfg.AppID,
+			cfg.AppSecret,
+			cfg.AccessToken,
+			cfg.APIVersion,
+		)
+		
+		// Create campaign creator
+		campaignCreator := internal_campaign.NewCampaignCreator(authClient, cfg.AccountID)
+		
+		// Ask for confirmation before proceeding
+		fmt.Printf("\nThis will create %d test campaigns. Proceed? (y/n): ", totalCombinations)
+		var confirm string
+		fmt.Scanln(&confirm)
+		if confirm != "y" && confirm != "Y" && confirm != "yes" && confirm != "Yes" {
+			fmt.Println("Campaign creation cancelled.")
+			return
+		}
+		
+		// Create a context with timeout for the entire operation
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		
+		createdCount := 0
+		failedCount := 0
+		
+		// Process all batches
+		for {
+			batch := generator.GetNextBatch()
+			if len(batch) == 0 {
+				break // No more combinations
+			}
+			
+			fmt.Printf("\nProcessing batch %d/%d (%d campaigns)...\n", 
+				generator.CurrentBatch, totalBatches, len(batch))
+			
+			for i, combination := range batch {
+				// Convert to Facebook campaign configuration
+				facebookCampaign := generator.ConvertToFacebookCampaign(combination)
+				
+				fmt.Printf("[%d/%d] Creating campaign: %s... ", 
+					createdCount+failedCount+1, totalCombinations, facebookCampaign.Name)
+				// Use i to avoid "not used" warning
+				_ = i
+				
+				// Execute with rate limiting and retries
+				err := rateLimiter.Execute(ctx, func() error {
+					return campaignCreator.CreateFromConfig(facebookCampaign)
+				})
+				
+				if err != nil {
+					fmt.Printf("FAILED: %v\n", err)
+					failedCount++
+				} else {
+					fmt.Println("SUCCESS")
+					createdCount++
+				}
+				
+				// Check if context was cancelled (timeout or user interrupt)
+				select {
+				case <-ctx.Done():
+					fmt.Printf("\nOperation cancelled: %v\n", ctx.Err())
+					return
+				default:
+					// Continue with next campaign
+				}
+			}
+		}
+		
+		// Print final summary
+		fmt.Printf("\nCampaign creation completed:\n")
+		fmt.Printf("  Successfully created: %d\n", createdCount)
+		fmt.Printf("  Failed: %d\n", failedCount)
+		fmt.Printf("  Total: %d\n", totalCombinations)
+		
+		// For now, provide a placeholder message since we haven't fully implemented the API integration
+		if createdCount == 0 && failedCount == 0 {
+			fmt.Println("\nNote: Campaign creation functionality will be implemented in the next version.")
+			fmt.Println("This command currently simulates the creation process without making API calls.")
+		}
+	}
 }
 
 // updateCampaignCPM updates campaign CPM based on performance data
@@ -1895,6 +2027,9 @@ func printUsage() {
 	fmt.Println("    - validate <yaml_file>  Validate a YAML campaign configuration file")
 	fmt.Println("    - create <yaml_file>    Create test campaigns from a YAML configuration")
 	fmt.Println("      --limit <num>         Limit the number of test combinations to create")
+	fmt.Println("      --batch-size <num>    Number of campaigns to create in each batch (default: 3)")
+	fmt.Println("      --priority <type>     Priority for combinations: audience or placement (default: audience)")
+	fmt.Println("      --dry-run, -d         Preview campaigns without creating them")
 	fmt.Println("    - update <campaign_ids> Update campaign CPM based on performance data")
 	fmt.Println("      --max-cpm <value>     Maximum CPM price allowed (default: 15.0)")
 	fmt.Println("")
