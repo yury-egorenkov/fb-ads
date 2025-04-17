@@ -1,0 +1,63 @@
+campaign:
+  name: "Summer Sale 2025"
+  total_budget: 1000.00
+  test_budget_percentage: 20
+  max_cpm: 15.00
+
+creatives:
+  - id: "creative1"
+    title: "Summer Sale 50% Off"
+    description: "Limited time offer on all summer items"
+    image_url: "https://example.com/summer_sale.jpg"
+    link_url: "https://example.com/summer"
+    call_to_action: "SHOP_NOW"
+    page_id: "123456789"
+  
+  - id: "creative2"
+    title: "New Summer Collection"
+    description: "Check out our latest summer styles"
+    image_url: "https://example.com/summer_collection.jpg"
+    link_url: "https://example.com/collection"
+    call_to_action: "LEARN_MORE"
+    page_id: "123456789"
+
+targeting_options:
+  audiences:
+    - id: "audience1"
+      name: "18-24 Male"
+      parameters:
+        age_min: 18
+        age_max: 24
+        genders: [1]
+    
+    - id: "audience2"
+      name: "25-34 Female"
+      parameters:
+        age_min: 25
+        age_max: 34
+        genders: [2]
+    
+    - id: "audience3"
+      name: "Parents"
+      parameters:
+        family_statuses: [1]
+    
+    - id: "audience4"
+      name: "Shopping Interests"
+      parameters:
+        interests: [
+          {"id": "6003139266461", "name": "Shopping"}
+        ]
+
+  placements:
+    - id: "placement1"
+      name: "Facebook Feed"
+      position: "feed"
+    
+    - id: "placement2"
+      name: "Instagram Stories"
+      position: "story"
+    
+    - id: "placement3"
+      name: "Facebook Right Column"
+      position: "right_hand_column"
