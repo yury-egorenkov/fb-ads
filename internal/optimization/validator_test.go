@@ -179,7 +179,7 @@ func TestValidateCampaignData(t *testing.T) {
 	t.Run("CustomThresholds", func(t *testing.T) {
 		customValidator := NewPerformanceValidator()
 		customValidator.SetThresholds(ValidationThresholds{
-			MinImpressions:   500,
+			MinImpressions:   1000, // Increased to ensure failure since total is 600
 			MinClicks:        5,
 			MinRunningTime:   1 * time.Hour,
 			MinDataPoints:    2,

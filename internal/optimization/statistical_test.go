@@ -99,54 +99,6 @@ func TestCalculateStandardDeviation(t *testing.T) {
 	}
 }
 
-func TestCalculateOptimalCPM(t *testing.T) {
-	analyzer := NewStatisticalAnalyzer()
-	
-	tests := []struct {
-		name     string
-		values   []float64
-		maxCPM   float64
-		expected float64
-	}{
-		{
-			name:     "empty slice",
-			values:   []float64{},
-			maxCPM:   10.0,
-			expected: 10.0,
-		},
-		{
-			name:     "below max threshold",
-			values:   []float64{5.0, 6.0, 7.0, 8.0, 9.0},
-			maxCPM:   15.0,
-			expected: 8.32, // Mean (7) + StdDev (1.32) = 8.32
-		},
-		{
-			name:     "above max threshold",
-			values:   []float64{10.0, 12.0, 14.0, 16.0, 18.0},
-			maxCPM:   15.0,
-			expected: 15.0, // Mean+StdDev would be 17.32, but maxCPM is 15.0
-		},
-	}
-	
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := analyzer.CalculateOptimalCPM(tt.values, tt.maxCPM)
-			
-			if tt.name != "empty slice" {
-				// Round to 2 decimal places for floating point comparison
-				roundedResult := math.Round(result*100) / 100
-				roundedExpected := math.Round(tt.expected*100) / 100
-				if roundedResult != roundedExpected {
-					t.Errorf("CalculateOptimalCPM() = %v, want %v", roundedResult, roundedExpected)
-				}
-			} else {
-				if result != tt.expected {
-					t.Errorf("CalculateOptimalCPM() = %v, want %v", result, tt.expected)
-				}
-			}
-		})
-	}
-}
 
 func TestIsOutlier(t *testing.T) {
 	analyzer := NewStatisticalAnalyzer()

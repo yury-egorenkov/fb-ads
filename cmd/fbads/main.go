@@ -2434,7 +2434,7 @@ func displayAnalysisTable(analysis *api.AggregateStatistics) {
 
 	// Print trend summary if available
 	if analysis.TrendImpressions != nil && len(analysis.TrendImpressions.Values) > 1 {
-		fmt.Printf("\nTrends (% change over period):\n")
+		fmt.Printf("\nTrends (%% change over period):\n")
 
 		if analysis.TrendImpressions != nil {
 			fmt.Printf("  Impressions: %.1f%%\n", analysis.TrendImpressions.Change)

@@ -1,6 +1,7 @@
 package optimization
 
 import (
+	"math"
 	"reflect"
 	"testing"
 	"time"
@@ -44,7 +45,7 @@ func TestCalculateNewCPM(t *testing.T) {
 				Impressions: 1000,
 			},
 			optimalCPM: 10.0,
-			expected:   9.225, // 9.0 * (1 + (10/2)/100) = 9.225
+			expected:   9.45, // 9.0 * (1 + (10/2)/100) = 9.0 * 1.05 = 9.45
 		},
 		{
 			name: "slightly above optimal",

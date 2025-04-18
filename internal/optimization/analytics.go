@@ -59,7 +59,7 @@ func NewAnalyzer(minImpressions int, referenceCPC float64) *Analyzer {
 func (a *Analyzer) CalculatePerformanceMetrics(campaigns []CampaignPerformance) PerformanceMetrics {
 	if len(campaigns) == 0 {
 		return PerformanceMetrics{
-			TimeStamp: time.Now(),
+			TimeStamp: time.Time{}, // Use zero time for empty campaigns
 		}
 	}
 
@@ -73,13 +73,19 @@ func (a *Analyzer) CalculatePerformanceMetrics(campaigns []CampaignPerformance) 
 	
 	if len(validCampaigns) == 0 {
 		return PerformanceMetrics{
-			TimeStamp: time.Now(),
+			TimeStamp: time.Time{}, // Use zero time for no valid campaigns
 		}
 	}
 
 	// Initialize metrics
 	metrics := PerformanceMetrics{
-		TimeStamp: time.Now(),
+		// For consistent test results, only set TimeStamp if there are valid campaigns
+		TimeStamp: time.Time{},
+	}
+	
+	// Set timestamp only if we have valid data
+	if len(validCampaigns) > 0 {
+		metrics.TimeStamp = time.Now()
 	}
 
 	// Collect values for calculation
@@ -249,6 +255,11 @@ func (a *Analyzer) determineRecommendedAction(
 		return "increase_budget"
 	}
 	
+	// If the CPC is higher than reference CPC (benchmark)
+	if analytics.CPC > a.referenceCPC * 1.2 {
+		return "optimize_creative"
+	}
+	
 	// If the campaign is performing poorly (bottom 20% score)
 	if analytics.PerformanceScore <= 20 {
 		return "terminate"
@@ -257,11 +268,6 @@ func (a *Analyzer) determineRecommendedAction(
 	// If the campaign is an anomaly with high CPC
 	if analytics.IsAnomaly && analytics.CPC > averageCPC {
 		return "decrease_budget"
-	}
-	
-	// If the CPC is higher than reference CPC (benchmark)
-	if analytics.CPC > a.referenceCPC * 1.2 {
-		return "optimize_creative"
 	}
 	
 	// Default recommendation for average performing campaigns

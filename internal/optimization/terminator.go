@@ -106,7 +106,7 @@ func (t *Terminator) GetUnderperformingCampaigns(campaigns []CampaignPerformance
 	underperforming := []string{}
 	for _, campaign := range validCampaigns {
 		// If CPC is significantly higher than median, consider it underperforming
-		if campaign.CPC > (medianCPC * cpcThresholdFactor) {
+		if campaign.CPC >= (medianCPC * cpcThresholdFactor) {
 			underperforming = append(underperforming, campaign.CampaignID)
 		}
 	}
