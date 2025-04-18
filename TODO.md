@@ -11,7 +11,7 @@
 - [x] Create command line interface structure
 - [x] Develop configuration file structure (JSON/Markdown)
 - [x] Build campaign listing functionality (basic structure)
-- [ ] Implement campaign creation from configuration files
+- [x] Implement campaign creation from configuration files
 - [x] Develop pagination handling for large data sets
 - [x] Export campaign by ID from Facebook to configuration file based
 - [x] Add tools for resolving Facebook Page ownership errors
@@ -33,10 +33,11 @@
 - [x] Implement status change operations (pause/resume/archive)
 - [x] Duplicate campaign with all internals by id
 - [x] Fix: on duplicate the budget is 100 times higher than it should be
+- [x] Delete campaign by id
+- [ ] Move `list`, `create`, `update`, `duplicate`, `export` as a campaign subcommand
 - [ ] Create campaign to promote a post from the page
 - [ ] Create bulk update capability for managing multiple campaigns
 - [ ] Develop scheduling system for automated campaign updates
-- [ ] Move list,create,update,duplicate,export as a campaign subcommand
 
 ## Performance Tracking
 - [x] Develop metrics collection system
