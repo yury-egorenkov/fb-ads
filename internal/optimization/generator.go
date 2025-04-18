@@ -25,14 +25,14 @@ type CampaignCombination struct {
 
 // CampaignGenerator handles the generation of test campaign combinations
 type CampaignGenerator struct {
-	Config        *CampaignOptimizationConfig
-	BudgetCalc    *BudgetCalculator
-	Combinations  []CampaignCombination
-	MaxBatchSize  int
-	CurrentBatch  int
-	Priority      string // "audience" or "placement" - which to prioritize
-	Limit         int    // Maximum number of combinations to generate (0 = no limit)
-	Template      *models.CampaignConfig // Optional template to use for campaign creation
+	Config       *CampaignOptimizationConfig
+	BudgetCalc   *BudgetCalculator
+	Combinations []CampaignCombination
+	MaxBatchSize int
+	CurrentBatch int
+	Priority     string                 // "audience" or "placement" - which to prioritize
+	Limit        int                    // Maximum number of combinations to generate (0 = no limit)
+	Template     *models.CampaignConfig // Optional template to use for campaign creation
 }
 
 // NewCampaignGenerator creates a new campaign generator
@@ -40,7 +40,7 @@ func NewCampaignGenerator(config *CampaignOptimizationConfig, budgetCalc *Budget
 	return &CampaignGenerator{
 		Config:       config,
 		BudgetCalc:   budgetCalc,
-		MaxBatchSize: 5, // Default max batch size
+		MaxBatchSize: 5,          // Default max batch size
 		Priority:     "audience", // Default priority
 	}
 }
@@ -73,23 +73,23 @@ func (g *CampaignGenerator) SetTemplate(template *models.CampaignConfig) {
 func (g *CampaignGenerator) GenerateAllCombinations() error {
 	// Reset combinations
 	g.Combinations = []CampaignCombination{}
-	
+
 	// Calculate total number of combinations
-	totalCombinations := len(g.Config.Creatives) * 
+	totalCombinations := len(g.Config.Creatives) *
 		(len(g.Config.TargetingOptions.Audiences) + len(g.Config.TargetingOptions.Placements))
-	
+
 	// If limit is set, adjust the total
 	actualTotal := totalCombinations
 	if g.Limit > 0 && g.Limit < totalCombinations {
 		actualTotal = g.Limit
 	}
-	
+
 	// Calculate budget per campaign
 	budgetPerCampaign, err := g.BudgetCalc.GetBudgetPerCampaign(actualTotal)
 	if err != nil {
 		return fmt.Errorf("error calculating budget per campaign: %w", err)
 	}
-	
+
 	// Generate creative + audience combinations
 	audienceCombinations := []CampaignCombination{}
 	for _, creative := range g.Config.Creatives {
@@ -107,7 +107,7 @@ func (g *CampaignGenerator) GenerateAllCombinations() error {
 			audienceCombinations = append(audienceCombinations, combination)
 		}
 	}
-	
+
 	// Generate creative + placement combinations
 	placementCombinations := []CampaignCombination{}
 	for _, creative := range g.Config.Creatives {
@@ -125,19 +125,19 @@ func (g *CampaignGenerator) GenerateAllCombinations() error {
 			placementCombinations = append(placementCombinations, combination)
 		}
 	}
-	
+
 	// Combine based on priority
 	if g.Priority == "audience" {
 		g.Combinations = append(audienceCombinations, placementCombinations...)
 	} else {
 		g.Combinations = append(placementCombinations, audienceCombinations...)
 	}
-	
+
 	// Apply limit if specified
 	if g.Limit > 0 && len(g.Combinations) > g.Limit {
 		g.Combinations = g.Combinations[:g.Limit]
 	}
-	
+
 	return nil
 }
 
@@ -147,15 +147,15 @@ func (g *CampaignGenerator) GetNextBatch() []CampaignCombination {
 	if start >= len(g.Combinations) {
 		return []CampaignCombination{} // No more combinations
 	}
-	
+
 	end := start + g.MaxBatchSize
 	if end > len(g.Combinations) {
 		end = len(g.Combinations)
 	}
-	
+
 	batch := g.Combinations[start:end]
 	g.CurrentBatch++
-	
+
 	return batch
 }
 
@@ -174,12 +174,12 @@ func (g *CampaignGenerator) TotalBatches() int {
 	if len(g.Combinations) == 0 {
 		return 0
 	}
-	
+
 	batches := len(g.Combinations) / g.MaxBatchSize
-	if len(g.Combinations) % g.MaxBatchSize > 0 {
+	if len(g.Combinations)%g.MaxBatchSize > 0 {
 		batches++
 	}
-	
+
 	return batches
 }
 
@@ -188,21 +188,21 @@ func (g *CampaignGenerator) ConvertToFacebookCampaign(combination CampaignCombin
 	// Generate a unique name with timestamp
 	timestamp := time.Now().Format("20060102-150405")
 	campaignName := fmt.Sprintf("%s (%s)", combination.Name, timestamp)
-	
+
 	var campaign *models.CampaignConfig
-	
+
 	// Use template if provided, otherwise create a new base campaign
 	if g.Template != nil {
 		// Create a deep copy of the template
 		campaignCopy := *g.Template
-		
+
 		// Override template values with combination values
 		campaignCopy.Name = campaignName
 		campaignCopy.Status = "PAUSED" // Always start paused for safety
 		campaignCopy.LifetimeBudget = combination.Budget
-		
+
 		campaign = &campaignCopy
-		
+
 		// Add ad set specific for this combination
 		if len(campaign.AdSets) > 0 {
 			// Use the first ad set from template as a base
@@ -210,15 +210,15 @@ func (g *CampaignGenerator) ConvertToFacebookCampaign(combination CampaignCombin
 			adSetCopy.Name = fmt.Sprintf("AdSet - %s", campaignName)
 			adSetCopy.Status = "PAUSED"
 			adSetCopy.BidAmount = combination.BidAmount
-			
+
 			// Initialize targeting if needed
 			if adSetCopy.Targeting == nil {
 				adSetCopy.Targeting = make(map[string]interface{})
 			}
-			
+
 			// Apply targeting from combination
 			applyTargetingToAdSet(&adSetCopy, combination)
-			
+
 			// Replace the ad sets with just this one
 			campaign.AdSets = []models.AdSetConfig{adSetCopy}
 		} else {
@@ -226,14 +226,14 @@ func (g *CampaignGenerator) ConvertToFacebookCampaign(combination CampaignCombin
 			adSet := createAdSet(campaignName, combination)
 			campaign.AdSets = []models.AdSetConfig{adSet}
 		}
-		
+
 		// Add ad specific for this combination
 		if len(campaign.Ads) > 0 {
 			// Use the first ad from template as a base
 			adCopy := campaign.Ads[0]
 			adCopy.Name = fmt.Sprintf("Ad - %s", campaignName)
 			adCopy.Status = "PAUSED"
-			
+
 			// Apply creative from the optimization config
 			adCopy.Creative.Title = combination.Creative.Title
 			adCopy.Creative.Body = combination.Creative.Description
@@ -241,7 +241,7 @@ func (g *CampaignGenerator) ConvertToFacebookCampaign(combination CampaignCombin
 			adCopy.Creative.LinkURL = combination.Creative.LinkURL
 			adCopy.Creative.CallToAction = combination.Creative.CallToAction
 			adCopy.Creative.PageID = combination.Creative.PageID
-			
+
 			// Replace the ads with just this one
 			campaign.Ads = []models.AdConfig{adCopy}
 		} else {
@@ -253,11 +253,11 @@ func (g *CampaignGenerator) ConvertToFacebookCampaign(combination CampaignCombin
 		// Calculate start and end times for lifetime budget
 		startTime := time.Now()
 		endTime := startTime.Add(7 * 24 * time.Hour) // End time is 7 days from now
-		
+
 		// Create base campaign config
 		campaign = &models.CampaignConfig{
 			Name:           campaignName,
-			Status:         "PAUSED", // Always start paused for safety
+			Status:         "PAUSED",            // Always start paused for safety
 			Objective:      "OUTCOME_AWARENESS", // Using awareness for test campaigns
 			BuyingType:     "AUCTION",
 			BidStrategy:    "LOWEST_COST_WITH_BID_CAP",
@@ -267,16 +267,16 @@ func (g *CampaignGenerator) ConvertToFacebookCampaign(combination CampaignCombin
 			AdSets:         []models.AdSetConfig{},
 			Ads:            []models.AdConfig{},
 		}
-		
+
 		// Create ad set
 		adSet := createAdSet(campaignName, combination)
 		campaign.AdSets = append(campaign.AdSets, adSet)
-		
+
 		// Create ad
 		ad := createAd(campaignName, combination)
 		campaign.Ads = append(campaign.Ads, ad)
 	}
-	
+
 	return campaign
 }
 
@@ -285,7 +285,7 @@ func createAdSet(campaignName string, combination CampaignCombination) models.Ad
 	// Calculate start and end times
 	startTime := time.Now()
 	endTime := startTime.Add(7 * 24 * time.Hour) // End time is 7 days from now
-	
+
 	adSet := models.AdSetConfig{
 		Name:             fmt.Sprintf("AdSet - %s", campaignName),
 		Status:           "PAUSED",
@@ -296,10 +296,10 @@ func createAdSet(campaignName string, combination CampaignCombination) models.Ad
 		EndTime:          endTime.Format(time.RFC3339), // Required for lifetime budget
 		Targeting:        make(map[string]interface{}),
 	}
-	
+
 	// Apply targeting
 	applyTargetingToAdSet(&adSet, combination)
-	
+
 	return adSet
 }
 
@@ -314,7 +314,7 @@ func applyTargetingToAdSet(adSet *models.AdSetConfig, combination CampaignCombin
 	} else if combination.TargetingType == "placement" {
 		// Set up placement targeting
 		adSet.Targeting["publisher_platforms"] = []string{"facebook", "instagram"}
-		
+
 		// Add specific placement based on position
 		switch combination.PlacementParams {
 		case "feed":
@@ -327,13 +327,13 @@ func applyTargetingToAdSet(adSet *models.AdSetConfig, combination CampaignCombin
 			// Use all positions if not specified
 			adSet.Targeting["facebook_positions"] = []string{"feed"}
 		}
-		
+
 		// Add required location targeting (required by Facebook API)
 		adSet.Targeting["geo_locations"] = map[string]interface{}{
-			"countries": []string{"US"},
+			"countries":      []string{"US"},
 			"location_types": []string{"home", "recent"},
 		}
-		
+
 		// Add minimal age targeting (required by Facebook API)
 		adSet.Targeting["age_min"] = 18
 		adSet.Targeting["age_max"] = 65

@@ -24,17 +24,17 @@ creatives:
 targeting_options:
   audiences:
     - id: "audience1"
-      name: "18-24 Male"
+      name: "18-65 Male"
       parameters:
         age_min: 18
-        age_max: 24
+        age_max: 65
         genders: [1]
     
     - id: "audience2"
-      name: "25-34 Female"
+      name: "25-65 Female"
       parameters:
         age_min: 25
-        age_max: 34
+        age_max: 75
         genders: [2]
     
     - id: "audience3"
