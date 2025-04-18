@@ -57,6 +57,12 @@ func main() {
 		createCampaign(cfg)
 	case "update":
 		updateCampaign(cfg)
+	case "delete":
+		if len(os.Args) < 3 {
+			fmt.Println("Missing campaign ID. Use: fbads delete <campaign_id>")
+			os.Exit(1)
+		}
+		deleteCampaign(cfg, os.Args[2])
 	case "duplicate":
 		if len(os.Args) < 3 {
 			fmt.Println("Missing campaign ID. Use: fbads duplicate <campaign_id> [options]")
@@ -2731,6 +2737,52 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%dm", minutes)
 }
 
+// deleteCampaign deletes a campaign by ID
+func deleteCampaign(cfg *config.Config, campaignID string) {
+	// Create auth client
+	authClient := auth.NewFacebookAuth(
+		cfg.AppID,
+		cfg.AppSecret,
+		cfg.AccessToken,
+		cfg.APIVersion,
+	)
+
+	// Create API client
+	client := api.NewClient(authClient, cfg.AccountID)
+
+	// Verify the campaign exists before deleting
+	fmt.Printf("Verifying campaign %s exists...\n", campaignID)
+	campaign, verifyErr := client.GetCampaignDetails(campaignID)
+	if verifyErr != nil {
+		fmt.Printf("Error: Campaign not found or cannot be accessed: %v\n", verifyErr)
+		fmt.Println("Please check that the campaign ID is correct and you have permission to access it.")
+		os.Exit(1)
+	}
+
+	fmt.Printf("Found campaign: %s (Status: %s)\n", campaign.Name, campaign.Status)
+
+	// Ask for confirmation before proceeding
+	fmt.Printf("\nWARNING: This will permanently delete the campaign. This action cannot be undone.\n")
+	fmt.Print("Are you sure you want to delete this campaign? (y/n): ")
+	var confirm string
+	fmt.Scanln(&confirm)
+	
+	if confirm != "y" && confirm != "Y" && confirm != "yes" && confirm != "Yes" {
+		fmt.Println("Campaign deletion cancelled.")
+		return
+	}
+
+	// Delete the campaign
+	fmt.Printf("Deleting campaign %s...\n", campaignID)
+	err := client.DeleteCampaign(campaignID)
+	if err != nil {
+		fmt.Printf("Error deleting campaign: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Campaign %s deleted successfully\n", campaignID)
+}
+
 func printUsage() {
 	fmt.Println("Usage: fbads <command> [arguments]")
 	fmt.Println("\nAvailable commands:")
@@ -2751,6 +2803,8 @@ func printUsage() {
 	fmt.Println("    --lifetime-budget=BUDGET  New lifetime budget (e.g., 1000.00)")
 	fmt.Println("    --bid-strategy=STRATEGY   New bid strategy (e.g., LOWEST_COST_WITHOUT_CAP)")
 	fmt.Println("    --file=FILE            JSON file with update parameters")
+	fmt.Println("")
+	fmt.Println("  delete <campaign_id>     Delete a campaign by ID")
 	fmt.Println("")
 	fmt.Println("  duplicate <campaign_id>  Duplicate an existing campaign with all its internals")
 	fmt.Println("    --name=NAME            Name for the duplicated campaign (defaults to 'Copy of [original]')")

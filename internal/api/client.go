@@ -707,3 +707,59 @@ func (c *Client) UpdateCampaign(campaignID string, params url.Values) error {
 
 	return nil
 }
+
+// DeleteCampaign deletes a campaign by ID
+// This sets the campaign status to DELETED in the Facebook Ads API
+func (c *Client) DeleteCampaign(campaignID string) error {
+	// Create the parameters with DELETED status
+	params := url.Values{}
+	params.Set("status", "DELETED")
+
+	// Create the endpoint URL with the campaign ID
+	endpoint := fmt.Sprintf("%s/%s", c.auth.GetAPIBaseURL(), campaignID)
+
+	// Create the request
+	req, err := http.NewRequest("POST", endpoint, strings.NewReader(params.Encode()))
+	if err != nil {
+		return fmt.Errorf("error creating request: %w", err)
+	}
+
+	// Set the content type header
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	// Add authentication
+	c.auth.AuthenticateRequest(req)
+
+	// Send the request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("error executing request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("error reading response: %w", err)
+	}
+
+	// Check for errors
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("API error: %s - %s", resp.Status, string(body))
+	}
+
+	// Parse the response
+	var result struct {
+		Success bool `json:"success"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("error parsing response: %w", err)
+	}
+
+	if !result.Success {
+		return fmt.Errorf("API did not return success")
+	}
+
+	return nil
+}
