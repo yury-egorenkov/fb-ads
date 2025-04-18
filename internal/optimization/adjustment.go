@@ -147,7 +147,7 @@ func (a *Adjuster) GetEligibleCampaigns(
 
 	for _, id := range campaignIDs {
 		// If no previous adjustment, campaign is eligible
-		if lastTime, exists := lastAdjustment[id]; !exists {
+		if _, exists := lastAdjustment[id]; !exists {
 			eligible = append(eligible, id)
 			continue
 		}
